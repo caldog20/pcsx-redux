@@ -20,10 +20,11 @@
 #include "gui/widgets/dynarec_disassembly.h"
 
 #include <capstone/capstone.h>
-#include <cinttypes>
+#include <inttypes.h>
 
 #include "gui/gui.h"
 #include "imgui.h"
+#include "imgui_stdlib.h"
 
 void PCSX::Widgets::Disassembly::draw(GUI* gui, const char* title) {
     ImGui::SetNextWindowSize(ImVec2(520, 600), ImGuiCond_FirstUseEver);

@@ -19,9 +19,6 @@
     <ClCompile Include="..\..\src\gui\widgets\dwarf.cc">
       <Filter>Source Files\widgets</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\src\gui\widgets\dynarec_disassembly.cc">
-      <Filter>Source Files\widgets</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\src\gui\widgets\filedialog.cc">
       <Filter>Source Files\widgets</Filter>
     </ClCompile>
@@ -88,9 +85,6 @@
       <Filter>Header Files\widgets</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\gui\widgets\dwarf.h">
-      <Filter>Header Files\widgets</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\src\gui\widgets\dynarec_disassembly.h">
       <Filter>Header Files\widgets</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\gui\widgets\filedialog.h">
