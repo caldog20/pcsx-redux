@@ -21,6 +21,11 @@
 
 #if defined(DYNAREC_AA64)
 
+bool DynaRecCPU::Init() {
+    gen.Mov(w0, w1);
+    return true;
+}
+
 void DynaRecCPU::Reset() {
     R3000Acpu::Reset();  // Reset CPU registers
     Shutdown();          // Deinit and re-init dynarec

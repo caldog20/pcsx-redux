@@ -59,6 +59,7 @@ static void psxMemWrite32Wrapper(uint32_t address, uint32_t value) {
 }
 
 using DynarecCallback = void (*)();  // A function pointer to JIT-emitted code
+using namespace vixl::aarch64;
 
 class DynaRecCPU final : public PCSX::R3000Acpu {
     using recompilationFunc = void (DynaRecCPU::*)();  // A function pointer to a dynarec member function
@@ -101,11 +102,11 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
   public:
     DynaRecCPU() : R3000Acpu("AA64 DynaRec") {}
     virtual bool Implemented() final { return true; }
-    virtual bool Init() final { return false; }
+    virtual bool Init() final;
     virtual void Reset() final;
-    virtual void Execute() final { abort(); }
-    virtual void Clear(uint32_t Addr, uint32_t Size) final { abort(); }
-    virtual void Shutdown() final { abort(); }
+    virtual void Execute() final { return; }
+    virtual void Clear(uint32_t Addr, uint32_t Size) final { return; }
+    virtual void Shutdown() final { return; }
     virtual bool isDynarec() final { return true; }
     // For the GUI dynarec disassembly widget
     virtual const uint8_t *getBufferPtr() final { return gen.getCode<const uint8_t*>(); }
