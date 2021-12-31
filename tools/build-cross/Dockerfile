@@ -15,8 +15,8 @@ RUN apt install -y make
 RUN apt install -y pkg-config
 
 # Compilers & base libraries
-RUN apt install -y g++
-RUN apt install -y gcc
+RUN apt install -y g++-10
+RUN apt install -y gcc-10
 
 # CI utilities
 RUN apt install -y curl wget
