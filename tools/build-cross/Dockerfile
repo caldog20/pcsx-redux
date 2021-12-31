@@ -25,7 +25,7 @@ RUN apt install -y python
 
 # Cross Compiler stuff
 RUN apt install -y debootstrap
-RUN apt install -y gcc-10-aarch64-linux-gnu g++-10-aarch64-linux-gnu
+RUN apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 RUN apt install -y qemu-user-static
 
 WORKDIR /

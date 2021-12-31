@@ -19,5 +19,5 @@ set REL=%UPP%!REL:%MAT%=!
 if "!REL!" EQU "!ROOT!" (set REL=) ELSE (set "REL=!REL:\=/!")
 set REL=/!REL!
 
-docker pull caldog20/aarch64cc:latest
-docker run --rm --env-file "%ROOT%/env.list" -i -w"/project%REL%" -v "%ROOT%:/project" caldog20/aarch64cc:latest make --makefile=Makefile-CROSS %*
+docker build -t aarch64cross .\tools\build-cross
+docker run --rm --env-file "%ROOT%/env.list" -i -w"/project%REL%" -v "%ROOT%:/project" aarch64cross make --makefile=Makefile-cross-aa64 %*
