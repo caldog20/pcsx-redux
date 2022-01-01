@@ -52,6 +52,15 @@ public:
     size_t getSize() {
         return GetCursorOffset();
     }
+    // TODO: Check permissions for aarch64. VIXL methods only allow RW or RE, not RWE
+    // May need manual mmap/mprotect calls if aarch64 allows RWE
+    void setRWX() {
+        GetBuffer()->SetExecutable();
+    }
+
+    void align() {
+        GetBuffer()->Align();
+    }
 
     void ready() { FinalizeCode(); }
 
@@ -81,6 +90,7 @@ public:
         std::ofstream file("DynarecOutput.dump", std::ios::binary);  // Make a file for our dump
         file.write(getCode<const char*>(), getSize());       // Write the code buffer to the dump
     }
+
 };
 
 #endif // DYNAREC_AA64

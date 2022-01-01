@@ -22,7 +22,56 @@
 #if defined(DYNAREC_AA64)
 
 bool DynaRecCPU::Init() {
-    gen.Mov(w0, w1);
+    // Initialize recompiler memory
+    // Check for 8MB RAM expansion
+    const bool ramExpansion = PCSX::g_emulator->settings.get<PCSX::Emulator::Setting8MB>();
+    m_ramSize = ramExpansion ? 0x800000 : 0x200000;
+    const auto biosSize = 0x80000;
+
+    // The amount of 64KB RAM pages. 0x80 with the ram expansion, 0x20 otherwise
+    const int ramPages = m_ramSize >> 16;
+
+    // Split the 32-bit address space into 64KB pages, so 0x10000 pages in total
+    m_recompilerLUT = new DynarecCallback*[0x10000]();
+
+    // Instructions need to be on 4-byte boundaries. So the amount of valid block entrypoints
+    // in a region of memory is REGION_SIZE / 4
+    m_ramBlocks = new DynarecCallback[m_ramSize / 4];
+    m_biosBlocks = new DynarecCallback[biosSize / 4];
+    m_dummyBlocks = new DynarecCallback[0x10000 / 4];  // Allocate one page worth of dummy blocks
+
+    gen.Reset();
+
+    for (int page = 0; page < 0x10000; page++) {  // Default all pages to dummy blocks
+        m_recompilerLUT[page] = &m_dummyBlocks[0];
+    }
+
+    // For every 64KB page of memory, we can have 64*1024/4 unique blocks = 0x4000
+    // Hence the multiplications below
+    for (int page = 0; page < ramPages; page++) {          // Map RAM to the recompiler LUT
+        const auto pointer = &m_ramBlocks[page * 0x4000];  // Get a pointer to the page of RAM blocks
+        m_recompilerLUT[page + 0x0000] = pointer;          // Map KUSEG, KSEG0 and KSEG1 RAM respectively
+        m_recompilerLUT[page + 0x8000] = pointer;
+        m_recompilerLUT[page + 0xA000] = pointer;
+    }
+
+    for (int page = 0; page < 8; page++) {  // Map BIOS to recompiler LUT
+        const auto pointer = &m_biosBlocks[page * 0x4000];
+        m_recompilerLUT[page + 0x1FC0] = pointer;  // Map KUSEG, KSEG0 and KSEG1 BIOS respectively
+        m_recompilerLUT[page + 0x9FC0] = pointer;
+        m_recompilerLUT[page + 0xBFC0] = pointer;
+    }
+
+//    gen.setRWX();
+
+    emitDispatcher();  // Emit our assembly dispatcher
+    uncompileAll();    // Mark all blocks as uncompiled
+
+    for (int i = 0; i < 0x10000 / 4; i++) {  // Mark all dummy blocks as invalid
+        m_dummyBlocks[i] = m_invalidBlock;
+    }
+
+    m_regs[0].markConst(0);  // $zero is always zero
     return true;
 }
 
@@ -55,6 +104,11 @@ void DynaRecCPU::uncompileAll() {
     for (auto i = 0; i < biosSize / 4; i++) {  // Mark all BIOS blocks as uncompiled
         m_biosBlocks[i] = m_uncompiledBlock;
     }
+}
+// TEST
+void DynaRecCPU::emitDispatcher() {
+    gen.align();
+    gen.Push(contextPointer);
 }
 
 std::unique_ptr<PCSX::R3000Acpu> PCSX::Cpus::getDynaRec() { return std::unique_ptr<PCSX::R3000Acpu>(new DynaRecCPU()); }
