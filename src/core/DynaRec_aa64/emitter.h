@@ -62,6 +62,11 @@ public:
         GetBuffer()->Align();
     }
 
+//    template <typename T>
+//    void callFunc(T& func) {
+//        Bl(reinterpret_cast<void*>(&func));
+//    }
+
     void ready() { FinalizeCode(); }
 
     #define MAKE_CONDITIONAL_BRANCH(properName, alias) \

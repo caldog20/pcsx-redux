@@ -151,6 +151,17 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     void prepareForCall();
     void handleKernelCall();
     void emitDispatcher();
+    void emitBlockLookup();
+
+    static void psxExceptionWrapper(DynaRecCPU* that, int32_t e, int32_t bd) { that->psxException(e, bd); }
+    static void recClearWrapper(DynaRecCPU* that, uint32_t address) { that->Clear(address, 1); }
+    static void recBranchTestWrapper(DynaRecCPU* that) { that->psxBranchTest(); }
+    static void recErrorWrapper(DynaRecCPU* that) { that->error(); }
+
+    static void signalShellReached(DynaRecCPU* that);
+    static DynarecCallback recRecompileWrapper(DynaRecCPU* that, DynarecCallback* callback) {
+        return that->recompile(callback, that->m_psxRegs.pc);
+    }
 
 
     // Check if we're executing from valid memory
@@ -163,6 +174,9 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     void handleLinking();
     void handleFastboot();
     void uncompileAll();
+
+    // Load a pointer to the JIT object in "reg" using lea with the context pointer
+    void loadThisPointer(Register reg) { gen.Mov(reg, contextPointer); }
 
   public:
     DynaRecCPU() : R3000Acpu("AA64 DynaRec") {}

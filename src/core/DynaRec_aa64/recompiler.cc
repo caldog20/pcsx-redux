@@ -105,10 +105,72 @@ void DynaRecCPU::uncompileAll() {
         m_biosBlocks[i] = m_uncompiledBlock;
     }
 }
+
+void DynaRecCPU::emitBlockLookup() {
+    const auto lutOffset = (size_t)m_recompilerLUT - (size_t)this;
+
+    gen.Ldr(w4, MemOperand(contextPointer, PC_OFFSET));  // w4 = pc
+    gen.Mov(w3, w4);      // w3 = pc
+    gen.Lsr(w4, w4, 16);       // w4 = pc >> 16
+    gen.And(w3, w3, 0xfffc);  // w3 = index into the recompiler LUT page, multiplied by 4
+
+    // Load base pointer to recompiler LUT page in rax
+
+    gen.Ldr(x0, (uintptr_t)m_recompilerLUT);
+    gen.Lsl(x4, x4, 3);
+    gen.Add(x0, x0, x4);
+    gen.Lsl(x3, x3, 1);
+    gen.Add(x0, x0, x3);
+    gen.Br(x0);
+//    gen.mov(rax, qword[rax + rcx * 8]);
+//    gen.jmp(qword[rax + rdx * 2]);  // Jump to block
+}
+
 // TEST
 void DynaRecCPU::emitDispatcher() {
+    vixl::aarch64::Label done;
+
     gen.align();
-    gen.Push(contextPointer);
+    m_dispatcher = gen.getCurr<DynarecCallback>();
+
+    // Align stack pointer and allocate stack space
+
+
+    // Backup context pointer register
+    gen.Str(contextPointer, MemOperand(sp, -16, PreIndex));
+    gen.Mov(contextPointer, (uintptr_t)this);
+    // Back up all our allocateable volatile regs
+    static_assert((ALLOCATEABLE_NON_VOLATILE_COUNT & 1) == 0);  // Make sure we've got an even number of regs
+    for (auto i = 0; i < ALLOCATEABLE_NON_VOLATILE_COUNT; i++) {
+        const auto reg = allocateableNonVolatiles[i];
+        gen.Str(reg.X(), MemOperand(sp, -16, PreIndex));
+    }
+
+    gen.Str(runningPointer, MemOperand(contextPointer, HOST_REG_CACHE_OFFSET(0)));
+    gen.Mov(runningPointer, (uintptr_t)PCSX::g_system->runningPtr());
+
+     emitBlockLookup();
+
+    gen.align();
+    m_returnFromBlock = gen.getCurr<DynarecCallback>();
+
+    loadThisPointer(arg1.X());
+    gen.Mov(x0, (uintptr_t)(recBranchTestWrapper));
+    gen.Br(x0);
+    gen.Ldr(x0, MemOperand(runningPointer));
+    gen.Tbz(x0, 1, &done);  // Check if PCSX::g_system->running is true
+    emitBlockLookup();                               // Otherwise, look up next block
+
+    gen.align();
+    // Code for exiting JIT context
+    gen.L(done);
+
+    // Restore all non-volatiles
+    for (int i = ALLOCATEABLE_NON_VOLATILE_COUNT - 1; i >= 0; i--) {
+        const auto reg = allocateableNonVolatiles[i];
+        gen.Ldr(reg.X(), MemOperand(sp, 16, PostIndex));
+    }
+
 }
 
 std::unique_ptr<PCSX::R3000Acpu> PCSX::Cpus::getDynaRec() { return std::unique_ptr<PCSX::R3000Acpu>(new DynaRecCPU()); }
