@@ -221,6 +221,12 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
         return (int64_t)((ptrdiff_t) target - (ptrdiff_t)current) >> 2;
     }
 
+    void maybeCancelDelayedLoad(uint32_t index) {
+        const unsigned other = m_currentDelayedLoad ^ 1;
+        if (m_delayedLoadInfo[other].index == index) {
+            m_delayedLoadInfo[other].active = false;
+        }
+    }
 
 
     // Instruction definitions

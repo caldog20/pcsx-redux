@@ -149,7 +149,7 @@ void DynaRecCPU::emitDispatcher() {
     gen.Str(runningPointer, MemOperand(contextPointer, HOST_REG_CACHE_OFFSET(0)));
     gen.Mov(runningPointer, (uintptr_t)PCSX::g_system->runningPtr());
 
-     emitBlockLookup();
+    emitBlockLookup();
 
     gen.align();
     m_returnFromBlock = gen.getCurr<DynarecCallback>();

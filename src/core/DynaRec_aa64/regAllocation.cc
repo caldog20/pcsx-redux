@@ -47,7 +47,6 @@ void DynaRecCPU::reserveReg(int index) {
 void DynaRecCPU::flushRegs() {
     for (auto i = 1; i < 32; i++) {
         if (m_regs[i].isConst()) {  // If const: Write the value directly, mark as unknown
-            // For now use x0 since aarch64 Str doesn't support immediate values
             gen.Mov(scratch, m_regs[i].val);
             gen.Str(scratch, MemOperand(contextPointer, GPR_OFFSET(i)));
             m_regs[i].markUnknown();
