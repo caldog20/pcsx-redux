@@ -107,7 +107,7 @@ void DynaRecCPU::uncompileAll() {
 }
 
 void DynaRecCPU::emitBlockLookup() {
-    const auto lutOffset = (size_t)m_recompilerLUT - (size_t)this;
+//    const auto lutOffset = (size_t)m_recompilerLUT - (size_t)this;
 
     gen.Ldr(w4, MemOperand(contextPointer, PC_OFFSET));  // w4 = pc
     gen.Mov(w3, w4);      // w3 = pc
@@ -116,7 +116,7 @@ void DynaRecCPU::emitBlockLookup() {
 
     // Load base pointer to recompiler LUT page in rax
 
-    gen.Ldr(x0, (uintptr_t)m_recompilerLUT);
+    gen.Mov(x0, (uintptr_t)m_recompilerLUT);
     gen.Lsl(x4, x4, 3);
     gen.Add(x0, x0, x4);
     gen.Lsl(x3, x3, 1);
@@ -155,8 +155,7 @@ void DynaRecCPU::emitDispatcher() {
     m_returnFromBlock = gen.getCurr<DynarecCallback>();
 
     loadThisPointer(arg1.X());
-    gen.Mov(x0, (uintptr_t)(recBranchTestWrapper));
-    gen.Br(x0);
+    call(recBranchTestWrapper);
     gen.Ldr(x0, MemOperand(runningPointer));
     gen.Tbz(x0, 1, &done);  // Check if PCSX::g_system->running is true
     emitBlockLookup();                               // Otherwise, look up next block
@@ -171,6 +170,8 @@ void DynaRecCPU::emitDispatcher() {
         gen.Ldr(reg.X(), MemOperand(sp, 16, PostIndex));
     }
 
+    // Pop context pointer register
+    gen.Ldr(contextPointer, MemOperand(sp, 16, PostIndex));
 }
 
 std::unique_ptr<PCSX::R3000Acpu> PCSX::Cpus::getDynaRec() { return std::unique_ptr<PCSX::R3000Acpu>(new DynaRecCPU()); }

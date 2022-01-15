@@ -197,6 +197,32 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     }
 
   private:
+
+    // Prepare for a call to a C++ function and then actually emit it
+    template <typename T>
+    void call(T& func) {
+        prepareForCall();
+        const auto funcptr = reinterpret_cast<const void *>(func);
+        const int64_t disp = getPCOffset(gen.getCurr<const void*>(), funcptr);
+        const bool fast = vixl::IsInt26(disp);
+
+        if (fast) {
+            // If distance is small enough, branch directly to imm26 address
+            gen.bl(disp);
+        } else {
+            // If disstance is too great for direct jump, move address into register and branch to register
+            gen.Mov(scratch, disp);
+            gen.Blr(scratch);
+        }
+    }
+
+
+    static int64_t getPCOffset(const void* current, const void* target) {
+        return (int64_t)((ptrdiff_t) target - (ptrdiff_t)current) >> 2;
+    }
+
+
+
     // Instruction definitions
     void recUnknown();
     void recSpecial();

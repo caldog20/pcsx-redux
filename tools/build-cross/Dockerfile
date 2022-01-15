@@ -17,7 +17,7 @@ RUN apt install -y pkg-config
 # Compilers & base libraries
 RUN apt install -y g++-10
 RUN apt install -y gcc-10
-
+RUN apt install -y gcc
 # CI utilities
 RUN apt install -y curl wget
 RUN apt install -y python
