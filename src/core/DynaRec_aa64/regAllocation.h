@@ -43,7 +43,7 @@ const Register arg1 = w0;
 const Register arg2 = w1;
 const Register arg3 = w2;
 const Register arg4 = w3;
-const Register scratch = w4;
+const Register scratch = w5;
 #define IS_VOLATILE(x) ((x) >= ALLOCATEABLE_NON_VOLATILE_COUNT)
 constexpr bool isWindows() { return false; }
 

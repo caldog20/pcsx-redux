@@ -183,9 +183,19 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     virtual bool Implemented() final { return true; }
     virtual bool Init() final;
     virtual void Reset() final;
-    virtual void Execute() final { return; }
-    virtual void Clear(uint32_t Addr, uint32_t Size) final { return; }
-    virtual void Shutdown() final { return; }
+//    virtual void Execute() final { return; }
+    virtual void Execute() final {
+        ZoneScoped;         // Tell the Tracy profiler to do its thing
+        (*m_dispatcher)();  // Jump to assembly dispatcher
+    }
+//    virtual void Clear(uint32_t Addr, uint32_t Size) final { return; }
+    virtual void Clear(uint32_t addr, uint32_t size) final {
+        auto pointer = getBlockPointer(addr);
+        for (auto i = 0; i < size; i++) {
+            *pointer++ = m_uncompiledBlock;
+        }
+    }
+    virtual void Shutdown() final;
     virtual bool isDynarec() final { return true; }
     // For the GUI dynarec disassembly widget
     virtual const uint8_t *getBufferPtr() final { return gen.getCode<const uint8_t*>(); }
@@ -381,6 +391,9 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
         &DynaRecCPU::recUnknown, &DynaRecCPU::recUnknown, &DynaRecCPU::recUnknown, &DynaRecCPU::recUnknown,  // 38
         &DynaRecCPU::recUnknown, &DynaRecCPU::recGPF,     &DynaRecCPU::recGPL,     &DynaRecCPU::recNCCT,     // 3c
     };
+
+
+    static constexpr bool ENABLE_BLOCK_LINKING = true;
 };
 
 #endif  // DYNAREC_AA64

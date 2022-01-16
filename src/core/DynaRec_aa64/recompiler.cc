@@ -62,7 +62,10 @@ bool DynaRecCPU::Init() {
         m_recompilerLUT[page + 0xBFC0] = pointer;
     }
 
-//    gen.setRWX();
+//    if (!gen.setRWX()) {
+//        PCSX::g_system->message("[Dynarec] Failed to allocate executable memory.\nTry disabling the Dynarec CPU.");
+//        return false;
+//    }
 
     emitDispatcher();  // Emit our assembly dispatcher
     uncompileAll();    // Mark all blocks as uncompiled
@@ -80,6 +83,20 @@ void DynaRecCPU::Reset() {
     Shutdown();          // Deinit and re-init dynarec
     Init();
 }
+
+void DynaRecCPU::signalShellReached(DynaRecCPU* that) {
+    if (!that->m_shellStarted) {
+        that->m_shellStarted = true;
+        PCSX::g_system->m_eventBus->signal(PCSX::Events::ExecutionFlow::ShellReached{});
+    }
+}
+
+void DynaRecCPU::flushCache() {
+    gen.Reset();       // Reset the emitter's code pointer and code size variables
+    emitDispatcher();  // Re-emit dispatcher
+    uncompileAll();    // Mark all blocks as uncompiled
+}
+
 
 /// Params: A program counter value
 /// Returns: A pointer to the host aa64 code that points to the block that starts from the given PC
@@ -115,13 +132,19 @@ void DynaRecCPU::emitBlockLookup() {
     gen.And(w3, w3, 0xfffc);  // w3 = index into the recompiler LUT page, multiplied by 4
 
     // Load base pointer to recompiler LUT page in rax
-
     gen.Mov(x0, (uintptr_t)m_recompilerLUT);
-    gen.Lsl(x4, x4, 3);
-    gen.Add(x0, x0, x4);
-    gen.Lsl(x3, x3, 1);
-    gen.Add(x0, x0, x3);
-    gen.Br(x0);
+    gen.Ldr(x0, MemOperand(x0, x4, LSL, 3));
+    gen.Lsl(scratch.X(), x3, 1);
+    gen.Add(x0, x0, scratch);
+    gen.Blr(x0);
+
+
+//    gen.Mov(x0, (uintptr_t)m_recompilerLUT);
+//    gen.Lsl(x4, x4, 3);
+//    gen.Add(x0, x0, x4);
+//    gen.Lsl(x3, x3, 1);
+//    gen.Add(x0, x0, x3);
+//    gen.Blr(x0);
 //    gen.mov(rax, qword[rax + rcx * 8]);
 //    gen.jmp(qword[rax + rdx * 2]);  // Jump to block
 }
@@ -170,8 +193,126 @@ void DynaRecCPU::emitDispatcher() {
         gen.Ldr(reg.X(), MemOperand(sp, 16, PostIndex));
     }
 
+    gen.Ldr(runningPointer, MemOperand(contextPointer, HOST_REG_CACHE_OFFSET(0)));
+
     // Pop context pointer register
     gen.Ldr(contextPointer, MemOperand(sp, 16, PostIndex));
+    gen.Ret();
+
+    gen.align();
+
+    m_uncompiledBlock = gen.getCurr<DynarecCallback>();
+
+    loadThisPointer(arg1.X());
+    gen.Ldr(arg2.X(), MemOperand(x0, x3, LSL, 3));
+    call(recRecompileWrapper);
+    gen.Blr(x0);
+
+    gen.align();
+    m_invalidBlock = gen.getCurr<DynarecCallback>();
+    call(recErrorWrapper);
+    gen.Bl(&done);
+}
+
+DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {
+    m_stopCompiling = false;
+    m_inDelaySlot = false;
+    m_nextIsDelaySlot = false;
+    m_delayedLoadInfo[0].active = false;
+    m_delayedLoadInfo[1].active = false;
+    m_pcWrittenBack = false;
+    m_linkedPC = std::nullopt;
+    m_pc = pc & ~3;
+
+    const auto startingPC = m_pc;
+    int count = 0;  // How many instructions have we compiled?
+
+    gen.align();
+
+    if (gen.getSize() > codeCacheSize) {  // Flush JIT cache if we've gone above the acceptable size
+        flushCache();
+    }
+
+    const auto pointer = gen.getCurr<DynarecCallback>();  // Pointer to emitted code
+
+    *callback = pointer;
+
+    handleKernelCall();  // Check if this is a kernel call vector, emit some extra code in that case.
+
+    auto shouldContinue = [&]() {
+        if (m_nextIsDelaySlot) {
+            return true;
+        }
+        if (m_stopCompiling) {
+            return false;
+        }
+        if (count >= MAX_BLOCK_SIZE) {  // TODO: Check delay slots here
+            return false;
+        }
+        return true;
+    };
+
+    while (shouldContinue()) {
+        m_inDelaySlot = m_nextIsDelaySlot;
+        m_nextIsDelaySlot = false;
+
+        const auto p = (uint32_t*)PSXM(m_pc);  // Fetch instruction
+        if (p == nullptr) {                    // Error if it can't be fetched
+            return m_invalidBlock;
+        }
+
+        m_psxRegs.code = *p;  // Actually read the instruction
+        m_pc += 4;            // Increment recompiler PC
+        count++;              // Increment instruction count
+
+        const auto func = m_recBSC[m_psxRegs.code >> 26];  // Look up the opcode in our decoding LUT
+        (*this.*func)();                                   // Jump into the handler to recompile it
+    }
+
+    flushRegs();
+    if (!m_pcWrittenBack) {
+//        gen.mov(dword[contextPointer + PC_OFFSET], m_pc);
+        gen.Mov(scratch.X(), m_pc);
+        gen.Str(scratch.X(), MemOperand(contextPointer, PC_OFFSET));
+    }
+
+    // If this was the block at 0x8003'0000 (Start of shell) send the GUI a "shell reached" signal
+    // This must happen after the PC is written back, otherwise our PC after sideloading will be overriden.
+    if (startingPC == 0x80030000) {
+        loadThisPointer(arg1.X());
+        call(signalShellReached);
+        m_linkedPC = std::nullopt;
+    }
+
+    gen.Mov(scratch.X(), count * PCSX::Emulator::BIAS);
+    gen.Str(scratch.X(), MemOperand(contextPointer, CYCLE_OFFSET));
+    if (m_linkedPC && ENABLE_BLOCK_LINKING && m_linkedPC.value() != startingPC) {
+        handleLinking();
+    } else {
+        gen.Mov(scratch.X(), (uint64_t)m_returnFromBlock);
+        gen.Blr(scratch.X());
+    }
+    return pointer;
+}
+
+// Checks if the block being compiled is one of the kernel call vectors
+// If so, emit a call to "InterceptBIOS", which handles the kernel call debugger features
+// Also handles fast booting by intercepting the shell reached signal and setting pc to $ra if fastboot is on
+void DynaRecCPU::handleKernelCall() {
+    return;
+}
+
+// Emits a jump to the dispatcher if there's no block to link to.
+// Otherwise, handle linking blocks
+void DynaRecCPU::handleLinking() {
+    return;
+}
+
+void DynaRecCPU::Shutdown() {
+    delete[] m_recompilerLUT;
+    delete[] m_ramBlocks;
+    delete[] m_biosBlocks;
+    delete[] m_dummyBlocks;
 }
 
 std::unique_ptr<PCSX::R3000Acpu> PCSX::Cpus::getDynaRec() { return std::unique_ptr<PCSX::R3000Acpu>(new DynaRecCPU()); }
