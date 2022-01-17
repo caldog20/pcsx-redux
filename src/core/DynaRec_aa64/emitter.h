@@ -92,7 +92,7 @@ public:
     #undef MAKE_CONDITIONAL_BRANCH
 
     void dumpBuffer() {
-        std::ofstream file("DynarecOutputAA64.dump", std::ios::binary);  // Make a file for our dump
+        std::ofstream file("DynarecOutput.dump", std::ios::binary);  // Make a file for our dump
         file.write(getCode<const char*>(), getSize());       // Write the code buffer to the dump
     }
 

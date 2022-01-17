@@ -54,6 +54,8 @@ void DynaRecCPU::recLB() { throw std::runtime_error("[Unimplemented] LB instruct
 void DynaRecCPU::recLBU() { throw std::runtime_error("[Unimplemented] LBU instruction"); }
 void DynaRecCPU::recLH() { throw std::runtime_error("[Unimplemented] LH instruction"); }
 void DynaRecCPU::recLHU() { throw std::runtime_error("[Unimplemented] LHU instruction"); }
+
+
 void DynaRecCPU::recLUI() {
 //    throw std::runtime_error("[Unimplemented] LUI instruction");
     BAILZERO(_Rt_);
@@ -61,6 +63,8 @@ void DynaRecCPU::recLUI() {
     maybeCancelDelayedLoad(_Rt_);
     markConst(_Rt_, m_psxRegs.code << 16);
 }
+
+
 void DynaRecCPU::recLW() { throw std::runtime_error("[Unimplemented] LW instruction"); }
 //void DynaRecCPU::recLWC2() { throw std::runtime_error("[Unimplemented] LWC2 instruction"); }
 void DynaRecCPU::recLWL() { throw std::runtime_error("[Unimplemented] LWL instruction"); }
@@ -82,6 +86,8 @@ void DynaRecCPU::recREGIMM() { throw std::runtime_error("[Unimplemented] REGIMM 
 void DynaRecCPU::recRFE() { throw std::runtime_error("[Unimplemented] RFE instruction"); }
 void DynaRecCPU::recSB() { throw std::runtime_error("[Unimplemented] SB instruction"); }
 void DynaRecCPU::recSH() { throw std::runtime_error("[Unimplemented] SH instruction"); }
+
+
 void DynaRecCPU::recSLL() {
 //    throw std::runtime_error("[Unimplemented] SLL instruction");
     BAILZERO(_Rd_);
@@ -94,6 +100,8 @@ void DynaRecCPU::recSLL() {
         gen.Lsl(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg,  _Sa_);
     }
 }
+
+
 void DynaRecCPU::recSLLV() { throw std::runtime_error("[Unimplemented] SLLV instruction"); }
 void DynaRecCPU::recSLT() { throw std::runtime_error("[Unimplemented] SLT instruction"); }
 void DynaRecCPU::recSLTI() { throw std::runtime_error("[Unimplemented] SLTI instruction"); }

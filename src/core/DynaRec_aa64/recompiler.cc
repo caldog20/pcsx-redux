@@ -124,19 +124,17 @@ void DynaRecCPU::uncompileAll() {
 }
 
 void DynaRecCPU::emitBlockLookup() {
-//    const auto lutOffset = (size_t)m_recompilerLUT - (size_t)this;
+
 
     gen.Ldr(w4, MemOperand(contextPointer, PC_OFFSET));  // w4 = pc
-    gen.Mov(w3, w4);      // w3 = pc
+    gen.And(w3, w4, 0xfffc);      // w3 = index into the recompiler LUT page, multiplied by 4
     gen.Lsr(w4, w4, 16);       // w4 = pc >> 16
-    gen.And(w3, w3, 0xfffc);  // w3 = index into the recompiler LUT page, multiplied by 4
 
-    // Load base pointer to recompiler LUT page in rax
+    // Load base pointer to recompiler LUT page in x0
     gen.Mov(x0, (uintptr_t)m_recompilerLUT);
     gen.Ldr(x0, MemOperand(x0, x4, LSL, 3));
-    gen.Lsl(scratch.X(), x3, 1);
-    gen.Add(x0, x0, scratch);
-    gen.Blr(x0);
+    gen.Ldr(x0, MemOperand(x0, x3, LSL, 1));
+    gen.Br(x0);
 
 
 //    gen.Mov(x0, (uintptr_t)m_recompilerLUT);
@@ -158,7 +156,8 @@ void DynaRecCPU::emitDispatcher() {
 
     // Align stack pointer and allocate stack space
 
-
+    // Backup link register
+    gen.Str(x30, MemOperand(sp, -16, PreIndex));
     // Backup context pointer register
     gen.Str(contextPointer, MemOperand(sp, -16, PreIndex));
     gen.Mov(contextPointer, (uintptr_t)this);
@@ -197,6 +196,8 @@ void DynaRecCPU::emitDispatcher() {
 
     // Pop context pointer register
     gen.Ldr(contextPointer, MemOperand(sp, 16, PostIndex));
+    // Pop link register before return is emiited
+    gen.Ldr(x30, MemOperand(sp, 16, PostIndex));
     gen.Ret();
 
     gen.align();
@@ -204,14 +205,16 @@ void DynaRecCPU::emitDispatcher() {
     m_uncompiledBlock = gen.getCurr<DynarecCallback>();
 
     loadThisPointer(arg1.X());
-    gen.Ldr(arg2.X(), MemOperand(x0, x3, LSL, 3));
+    gen.Mov(arg2.X(), x3);
+    gen.Lsl(arg2.X(), arg2.X(), 1);
+    gen.Add(arg2.X(), arg2.X(), x0);
     call(recRecompileWrapper);
-    gen.Blr(x0);
+    gen.Br(x0);
 
     gen.align();
     m_invalidBlock = gen.getCurr<DynarecCallback>();
     call(recErrorWrapper);
-    gen.Bl(&done);
+    gen.B(&done);
 }
 
 DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {
@@ -290,7 +293,7 @@ DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {
         handleLinking();
     } else {
         gen.Mov(scratch.X(), (uint64_t)m_returnFromBlock);
-        gen.Blr(scratch.X());
+        gen.Br(scratch.X());
     }
     return pointer;
 }

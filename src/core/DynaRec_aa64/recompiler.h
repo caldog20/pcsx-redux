@@ -90,14 +90,14 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
 
     enum class RegState { Unknown, Constant };
     enum class LoadingMode { DoNotLoad, Load };
-
+    // Renamed temporarily to mRegister since it collides with Register in vixl::aarch64 namespace
     struct mRegister {
         uint32_t val = 0;                    // The register's cached value used for constant propagation
         RegState state = RegState::Unknown;  // Is this register's value a constant, or an unknown value?
 
         bool allocated = false;  // Has this guest register been allocated to a host reg?
         bool writeback = false;  // Does this register need to be written back to memory at the end of the block?
-        vixl::aarch64::Register allocatedReg;      // If a host reg has been allocated to this register, which reg is it?
+        Register allocatedReg;      // If a host reg has been allocated to this register, which reg is it?
         int allocatedRegIndex = 0;
 
         inline bool isConst() { return state == RegState::Constant; }
@@ -183,12 +183,10 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     virtual bool Implemented() final { return true; }
     virtual bool Init() final;
     virtual void Reset() final;
-//    virtual void Execute() final { return; }
     virtual void Execute() final {
         ZoneScoped;         // Tell the Tracy profiler to do its thing
         (*m_dispatcher)();  // Jump to assembly dispatcher
     }
-//    virtual void Clear(uint32_t Addr, uint32_t Size) final { return; }
     virtual void Clear(uint32_t addr, uint32_t size) final {
         auto pointer = getBlockPointer(addr);
         for (auto i = 0; i < size; i++) {
@@ -202,7 +200,7 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     virtual const size_t getBufferSize() final { return gen.getSize(); }
     virtual void SetPGXPMode(uint32_t pgxpMode) final {
         if (pgxpMode != 0) {
-            throw std::runtime_error("PGXP not supported in x64 JIT");
+            throw std::runtime_error("PGXP not supported in AA64 JIT");
         }
     }
 
@@ -212,22 +210,24 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     template <typename T>
     void call(T& func) {
         prepareForCall();
-        const auto funcptr = reinterpret_cast<const void *>(func);
-        const int64_t disp = getPCOffset(gen.getCurr<const void*>(), funcptr);
-        const bool fast = vixl::IsInt26(disp);
+        const auto ptr = reinterpret_cast<const void*>(func);
+        const int64_t disp = getPCOffset(gen.getCurr<const void*>(), ptr);
 
-        if (fast) {
-            // If distance is small enough, branch directly to imm26 address
+        // If the displacement can fit in a 26-bit int, that means we can emit a direct call to the address
+        // Otherwise, load the address into a register and emit a blr
+        const bool canDoDirectCall = vixl::IsInt26(disp);
+
+        if (canDoDirectCall) {
             gen.bl(disp);
         } else {
-            // If disstance is too great for direct jump, move address into register and branch to register
-            gen.Mov(scratch, disp);
+            gen.Mov(scratch, (uintptr_t)ptr);
             gen.Blr(scratch);
         }
     }
 
-
-    static int64_t getPCOffset(const void* current, const void* target) {
+    // Calculate the number of instructions between the current PC and the branch target
+    // Returns a negative number for backwards jumps
+    int64_t getPCOffset(const void* current, const void* target) {
         return (int64_t)((ptrdiff_t) target - (ptrdiff_t)current) >> 2;
     }
 

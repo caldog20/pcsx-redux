@@ -45,6 +45,6 @@ const Register arg3 = w2;
 const Register arg4 = w3;
 const Register scratch = w5;
 #define IS_VOLATILE(x) ((x) >= ALLOCATEABLE_NON_VOLATILE_COUNT)
-constexpr bool isWindows() { return false; }
+
 
 #endif  // DYNAREC_AA64

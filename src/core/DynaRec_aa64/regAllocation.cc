@@ -46,7 +46,7 @@ void DynaRecCPU::reserveReg(int index) {
 //// Flush constants and allocated registers to host regs at the end of a block
 void DynaRecCPU::flushRegs() {
     for (auto i = 1; i < 32; i++) {
-        if (m_regs[i].isConst()) {  // If const: Write the value directly, mark as unknown
+        if (m_regs[i].isConst()) {  // If const: Write the value directly, mark as unknown. Possibly change when constants will be stored in host regs
             gen.Mov(scratch, m_regs[i].val);
             gen.Str(scratch, MemOperand(contextPointer, GPR_OFFSET(i)));
             m_regs[i].markUnknown();
