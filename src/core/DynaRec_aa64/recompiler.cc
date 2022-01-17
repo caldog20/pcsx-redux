@@ -40,6 +40,7 @@ bool DynaRecCPU::Init() {
     m_biosBlocks = new DynarecCallback[biosSize / 4];
     m_dummyBlocks = new DynarecCallback[0x10000 / 4];  // Allocate one page worth of dummy blocks
 
+    // Reset code generator and buffer
     gen.Reset();
 
     for (int page = 0; page < 0x10000; page++) {  // Default all pages to dummy blocks
@@ -62,10 +63,10 @@ bool DynaRecCPU::Init() {
         m_recompilerLUT[page + 0xBFC0] = pointer;
     }
 
-//    if (!gen.setRWX()) {
-//        PCSX::g_system->message("[Dynarec] Failed to allocate executable memory.\nTry disabling the Dynarec CPU.");
-//        return false;
-//    }
+    if (!gen.setRWX()) {
+        PCSX::g_system->message("[Dynarec] Failed to allocate executable memory.\nTry disabling the Dynarec CPU.");
+        return false;
+    }
 
     emitDispatcher();  // Emit our assembly dispatcher
     uncompileAll();    // Mark all blocks as uncompiled
@@ -136,23 +137,14 @@ void DynaRecCPU::emitBlockLookup() {
     gen.Ldr(x0, MemOperand(x0, x3, LSL, 1));
     gen.Br(x0);
 
-
-//    gen.Mov(x0, (uintptr_t)m_recompilerLUT);
-//    gen.Lsl(x4, x4, 3);
-//    gen.Add(x0, x0, x4);
-//    gen.Lsl(x3, x3, 1);
-//    gen.Add(x0, x0, x3);
-//    gen.Blr(x0);
-//    gen.mov(rax, qword[rax + rcx * 8]);
-//    gen.jmp(qword[rax + rdx * 2]);  // Jump to block
 }
 
-// TEST
 void DynaRecCPU::emitDispatcher() {
     vixl::aarch64::Label done;
 
     gen.align();
     m_dispatcher = gen.getCurr<DynarecCallback>();
+
     // Back up all our allocateable volatile regs
     static_assert((ALLOCATEABLE_NON_VOLATILE_COUNT & 1) == 0);  // Make sure we've got an even number of regs
     for (auto i = 0; i < ALLOCATEABLE_NON_VOLATILE_COUNT; i+=2) {
@@ -160,13 +152,13 @@ void DynaRecCPU::emitDispatcher() {
         const auto reg2 = allocateableNonVolatiles[i + 1];
         gen.Stp(reg.X(), reg2.X(), MemOperand(sp, -16, PreIndex));
     }
+
     // Backup link register
     gen.Str(x30, MemOperand(sp, -16, PreIndex));
     // Backup context pointer register
     gen.Str(contextPointer, MemOperand(sp, -16, PreIndex));
     // Backup running pointer register
     gen.Str(runningPointer, MemOperand(contextPointer, HOST_REG_CACHE_OFFSET(0)));
-
 
     // Load running pointer register
     gen.Mov(runningPointer, (uintptr_t)PCSX::g_system->runningPtr());
@@ -185,6 +177,7 @@ void DynaRecCPU::emitDispatcher() {
     emitBlockLookup();                               // Otherwise, look up next block
 
     gen.align();
+
     // Code for exiting JIT context
     gen.L(done);
 
@@ -194,6 +187,7 @@ void DynaRecCPU::emitDispatcher() {
         const auto reg2 = allocateableNonVolatiles[i - 1];
         gen.Ldp(reg.X(), reg2.X(), MemOperand(sp, 16, PostIndex));
     }
+
     // Restore running pointer register
     gen.Ldr(runningPointer, MemOperand(contextPointer, HOST_REG_CACHE_OFFSET(0)));
     // Restore context pointer register
@@ -218,6 +212,7 @@ void DynaRecCPU::emitDispatcher() {
     m_invalidBlock = gen.getCurr<DynarecCallback>();
     call(recErrorWrapper);
     gen.B(&done);
+    gen.ready();
 }
 
 DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {

@@ -20,6 +20,7 @@
 #pragma once
 #ifdef DYNAREC_AA64
 #include "vixl/src/aarch64/macro-assembler-aarch64.h"
+#include <sys/mman.h>
 
 using namespace vixl::aarch64;
 
@@ -52,20 +53,15 @@ public:
     size_t getSize() {
         return GetCursorOffset();
     }
-    // TODO: Check permissions for aarch64. VIXL methods only allow RW or RE, not RWE
-    // May need manual mmap/mprotect calls if aarch64 allows RWE
-    void setRWX() {
-        GetBuffer()->SetExecutable();
+    // TODO: VIXL methods only allow for RW or RE; This will need to be handled manually for M1 Mac regardless
+    bool setRWX() {
+        // GetBuffer()->SetExecutable
+        return mprotect(s_codeCache, allocSize, PROT_READ | PROT_WRITE | PROT_EXEC) != -1;
     }
 
     void align() {
         GetBuffer()->Align();
     }
-
-//    template <typename T>
-//    void callFunc(T& func) {
-//        Bl(reinterpret_cast<void*>(&func));
-//    }
 
     void ready() { FinalizeCode(); }
 
