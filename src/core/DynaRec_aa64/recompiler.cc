@@ -153,23 +153,25 @@ void DynaRecCPU::emitDispatcher() {
 
     gen.align();
     m_dispatcher = gen.getCurr<DynarecCallback>();
-
-    // Align stack pointer and allocate stack space
-
+    // Back up all our allocateable volatile regs
+    static_assert((ALLOCATEABLE_NON_VOLATILE_COUNT & 1) == 0);  // Make sure we've got an even number of regs
+    for (auto i = 0; i < ALLOCATEABLE_NON_VOLATILE_COUNT; i+=2) {
+        const auto reg = allocateableNonVolatiles[i];
+        const auto reg2 = allocateableNonVolatiles[i + 1];
+        gen.Stp(reg.X(), reg2.X(), MemOperand(sp, -16, PreIndex));
+    }
     // Backup link register
     gen.Str(x30, MemOperand(sp, -16, PreIndex));
     // Backup context pointer register
     gen.Str(contextPointer, MemOperand(sp, -16, PreIndex));
-    gen.Mov(contextPointer, (uintptr_t)this);
-    // Back up all our allocateable volatile regs
-    static_assert((ALLOCATEABLE_NON_VOLATILE_COUNT & 1) == 0);  // Make sure we've got an even number of regs
-    for (auto i = 0; i < ALLOCATEABLE_NON_VOLATILE_COUNT; i++) {
-        const auto reg = allocateableNonVolatiles[i];
-        gen.Str(reg.X(), MemOperand(sp, -16, PreIndex));
-    }
-
+    // Backup running pointer register
     gen.Str(runningPointer, MemOperand(contextPointer, HOST_REG_CACHE_OFFSET(0)));
+
+
+    // Load running pointer register
     gen.Mov(runningPointer, (uintptr_t)PCSX::g_system->runningPtr());
+    // Load context pointer register
+    gen.Mov(contextPointer, (uintptr_t)this);
 
     emitBlockLookup();
 
@@ -187,17 +189,18 @@ void DynaRecCPU::emitDispatcher() {
     gen.L(done);
 
     // Restore all non-volatiles
-    for (int i = ALLOCATEABLE_NON_VOLATILE_COUNT - 1; i >= 0; i--) {
+    for (int i = ALLOCATEABLE_NON_VOLATILE_COUNT - 1; i >= 0; i-=2) {
         const auto reg = allocateableNonVolatiles[i];
-        gen.Ldr(reg.X(), MemOperand(sp, 16, PostIndex));
+        const auto reg2 = allocateableNonVolatiles[i - 1];
+        gen.Ldp(reg.X(), reg2.X(), MemOperand(sp, 16, PostIndex));
     }
-
+    // Restore running pointer register
     gen.Ldr(runningPointer, MemOperand(contextPointer, HOST_REG_CACHE_OFFSET(0)));
-
-    // Pop context pointer register
+    // Restore context pointer register
     gen.Ldr(contextPointer, MemOperand(sp, 16, PostIndex));
-    // Pop link register before return is emiited
+    // Restore link register before return is emiited
     gen.Ldr(x30, MemOperand(sp, 16, PostIndex));
+
     gen.Ret();
 
     gen.align();
