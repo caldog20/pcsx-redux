@@ -63,7 +63,10 @@ public:
         GetBuffer()->Align();
     }
 
-    void ready() { FinalizeCode(); }
+    // TODO: Verify. VIXL states this must be called before code in buffer can be executed
+    // Default option here is NoFallThrough, which means any code emiited after this is called
+    // is ignore.
+    void ready() { FinalizeCode(kFallThrough); }
 
     #define MAKE_CONDITIONAL_BRANCH(properName, alias) \
     void b##properName(Label& l) { b(&l, properName); } \
@@ -94,6 +97,17 @@ public:
 
     // Returns a signed integer that shows how many bytes of free space are left in the code buffer
     int64_t getRemainingSize() { return (int64_t)codeCacheSize - (int64_t)getSize(); }
+
+    // Adds "value" to "source" and stores the result in dest
+    // Uses add if the value is non-zero, or mov otherwise
+    // TODO: Possibly use WRegister here for safety
+    void moveAndAdd(vixl::aarch64::Register dest, vixl::aarch64::Register source, uint32_t value) {
+        if (value != 0) {
+            Add(dest, source, value);
+        } else {
+            Mov(dest, source);
+        }
+    }
 };
 
 #endif // DYNAREC_AA64
