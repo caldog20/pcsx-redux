@@ -163,6 +163,19 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
         return that->recompile(callback, that->m_psxRegs.pc);
     }
 
+    template <uint32_t pc>
+    static void interceptKernelCallWrapper(DynaRecCPU* that) {
+        that->InterceptBIOS<false>(pc);
+    }
+
+
+    void inlineClear(uint32_t address) {
+        if (isPcValid(address & ~3)) {
+            loadThisPointer(arg1.X());
+            gen.mov(arg2, address & ~3);
+            call(recClearWrapper);
+        }
+    }
 
     // Check if we're executing from valid memory
     inline bool isPcValid(uint32_t addr) { return m_recompilerLUT[addr >> 16] != m_dummyBlocks; }
@@ -206,6 +219,46 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
 
   private:
 
+    // Loads a value into dest from the given pointer.
+    template <int size, bool signExtend>
+    void load(vixl::aarch64::Register dest, const void* pointer) {
+        const auto distance = (intptr_t)pointer - (intptr_t)this;
+        gen.Mov(x0, (uintptr_t)pointer);
+        switch (size) {
+            case 8:
+                signExtend ? gen.Ldrsb(dest, MemOperand(x0)) : gen.Ldrb(dest, MemOperand(x0));
+                break;
+            case 16:
+                signExtend ? gen.Ldrsh(dest, MemOperand(x0)) : gen.Ldrh(dest, MemOperand(x0));
+                break;
+            case 32:
+                gen.Ldr(dest, MemOperand(x0));
+                break;
+        }
+    }
+
+    // Stores a value of "size" bits from "source" to the given pointer
+    /* TODO: value must be moved into register first before it can be stored unlike x64 with can use mov to write to memory */
+    template <int size, typename T>
+    void store(T source, const void* pointer) {
+        const auto distance = (intptr_t)pointer - (intptr_t)this;
+        gen.mov(x0, (uintptr_t)pointer);
+        switch (size) {
+            case 8:
+                gen.Strb(source, MemOperand(x0));
+                break;
+            case 16:
+                gen.Strh(source, MemOperand(x0));
+                break;
+            case 32:
+                gen.Str(source, MemOperand(x0));
+                break;
+        }
+    }
+
+
+
+
     // Prepare for a call to a C++ function and then actually emit it
     template <typename T>
     void call(T& func) {
@@ -222,6 +275,22 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
         } else {
             gen.Mov(scratch, (uintptr_t)ptr);
             gen.Blr(scratch);
+        }
+    }
+
+    // Fix this, jmp function using same method as call to attempt direct jump
+    void jmp(void * pointer) {
+        const int64_t disp = getPCOffset(gen.getCurr<const void*>(), pointer);
+
+        // If the displacement can fit in a 26-bit int, that means we can emit a direct call to the address
+        // Otherwise, load the address into a register and emit a blr
+        const bool canDoDirectJump = vixl::IsInt26(disp);
+
+        if (canDoDirectJump) {
+            gen.b(disp);
+        } else {
+            gen.Mov(scratch, (uintptr_t)pointer);
+            gen.Br(scratch);
         }
     }
 
