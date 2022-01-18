@@ -79,6 +79,15 @@ bool DynaRecCPU::Init() {
     return true;
 }
 
+void DynaRecCPU::Shutdown() {
+    gen.dumpBuffer(); // TODO: Possibly move x64 dumpBuffer() method to emitter.h
+
+    delete[] m_recompilerLUT;
+    delete[] m_ramBlocks;
+    delete[] m_biosBlocks;
+    delete[] m_dummyBlocks;
+}
+
 void DynaRecCPU::Reset() {
     R3000Acpu::Reset();  // Reset CPU registers
     Shutdown();          // Deinit and re-init dynarec
@@ -181,19 +190,19 @@ void DynaRecCPU::emitDispatcher() {
     // Code for exiting JIT context
     gen.L(done);
 
-    // Restore all non-volatiles
-    for (int i = ALLOCATEABLE_NON_VOLATILE_COUNT - 1; i >= 0; i-=2) {
-        const auto reg = allocateableNonVolatiles[i];
-        const auto reg2 = allocateableNonVolatiles[i - 1];
-        gen.Ldp(reg.X(), reg2.X(), MemOperand(sp, 16, PostIndex));
-    }
-
     // Restore running pointer register
     gen.Ldr(runningPointer, MemOperand(contextPointer, HOST_REG_CACHE_OFFSET(0)));
     // Restore context pointer register
     gen.Ldr(contextPointer, MemOperand(sp, 16, PostIndex));
     // Restore link register before return is emiited
     gen.Ldr(x30, MemOperand(sp, 16, PostIndex));
+
+    // Restore all non-volatiles
+    for (int i = ALLOCATEABLE_NON_VOLATILE_COUNT - 1; i >= 0; i-=2) {
+        const auto reg = allocateableNonVolatiles[i];
+        const auto reg2 = allocateableNonVolatiles[i - 1];
+        gen.Ldp(reg.X(), reg2.X(), MemOperand(sp, 16, PostIndex));
+    }
 
     gen.Ret();
 
@@ -300,21 +309,96 @@ DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {
 // If so, emit a call to "InterceptBIOS", which handles the kernel call debugger features
 // Also handles fast booting by intercepting the shell reached signal and setting pc to $ra if fastboot is on
 void DynaRecCPU::handleKernelCall() {
-    return;
+//    if (m_pc == 0x80030000) {
+//        handleFastboot();
+//        return;
+//    }
+
+    const uint32_t pc = m_pc & 0x1fffff;
+    const uint32_t base = (m_pc >> 20) & 0xffc;
+    if ((base != 0x000) && (base != 0x800) && (base != 0xa00))
+        return;  // Mask out the segment, return if not a kernel call vector
+
+    switch (pc) {  // Handle the A0/B0/C0 vectors
+        case 0xA0:
+            loadThisPointer(arg1.X());
+            call(interceptKernelCallWrapper<0xA0>);
+            break;
+
+        case 0xB0:
+            loadThisPointer(arg1.X());
+            call(interceptKernelCallWrapper<0xB0>);
+            break;
+
+        case 0xC0:
+            loadThisPointer(arg1.X());
+            call(interceptKernelCallWrapper<0xC0>);
+            break;
+    }
 }
 
 // Emits a jump to the dispatcher if there's no block to link to.
 // Otherwise, handle linking blocks
-void DynaRecCPU::handleLinking() {
-    return;
+void DynaRecCPU::handleLinking() { // TODO: Redo this whole thing
+    vixl::aarch64::Label skipReturn1, skipReturn2;
+    // Don't link unless the next PC is valid, and there's over 1MB of free space in the code cache
+    if (isPcValid(m_linkedPC.value()) && gen.getRemainingSize() > 0x100000) {
+        const auto nextPC = m_linkedPC.value();
+        const auto nextBlockPointer = getBlockPointer(nextPC);
+        const auto nextBlockOffset = (size_t)nextBlockPointer - (size_t)this;
+
+        if (*nextBlockPointer == m_uncompiledBlock) {  // If the next block hasn't been compiled yet
+            // Check that the block hasn't been invalidated/moved
+            // The value will be patched later. Since all code is within the same 32MB segment,
+            // We can get away with only checking the low 32 bits of the block pointer
+
+//                loadAddress(rax, nextBlockPointer); // TODO: Possibly add loadAddress method for aarch64 to use
+            gen.Mov(x0, (uintptr_t)nextBlockPointer);
+            gen.Cmp(w0, 0xcccccccc);
+
+            const auto pointer = gen.getCurr<uint8_t*>();
+            if (vixl::IsInt19((uintptr_t)m_returnFromBlock)) {
+                gen.b((uintptr_t)m_returnFromBlock, ne);
+            } else {
+                gen.Tbz(w0, 0xcccccccc, &skipReturn1);
+                gen.Mov(x0, (uintptr_t)m_returnFromBlock);
+                gen.Br(x0);
+            }
+            gen.L(skipReturn1);
+            recompile(nextBlockPointer, nextPC);  // Fallthrough to next block TODO: FIX ME to use alignment bool
+            *(uint32_t*)(pointer - 4) = (uint32_t)(uintptr_t)*nextBlockPointer;  // Patch comparison value
+        } else {  // If it has already been compiled, link by jumping to the compiled code
+            gen.Mov(x0, (uintptr_t)nextBlockPointer);
+            gen.Tbnz(w0, (uint32_t)(uintptr_t)*nextBlockPointer, &skipReturn2);
+
+            jmp((void*)*nextBlockPointer);  // Jump to linked block otherwise
+            gen.L(skipReturn2);
+            jmp((void*)m_returnFromBlock);
+        }
+    } else {  // Can't link, so return to dispatcher
+        jmp((void*)m_returnFromBlock);
+    }
 }
 
-void DynaRecCPU::Shutdown() {
-    delete[] m_recompilerLUT;
-    delete[] m_ramBlocks;
-    delete[] m_biosBlocks;
-    delete[] m_dummyBlocks;
-}
+//void DynaRecCPU::handleFastboot() {
+//    vixl::aarch64::Label noFastBoot;
+//
+//    loadAddress(rax, &m_shellStarted);  // Check if shell has already been reached
+//    gen.cmp(Xbyak::util::byte[rax], 0);
+//    gen.jnz(noFastBoot);  // Don't fastboot if so
+//
+//    loadAddress(rax, &PCSX::g_emulator->settings.get<PCSX::Emulator::SettingFastBoot>());  // Check if fastboot is on
+//    gen.cmp(Xbyak::util::byte[rax], 0);
+//    gen.je(noFastBoot);
+//
+//    loadThisPointer(arg1.cvt64());  // If fastbooting, call the signalShellReached function, set pc, and exit the block
+//    call(signalShellReached);
+//    gen.mov(eax, dword[contextPointer + GPR_OFFSET(31)]);
+//    gen.mov(dword[contextPointer + PC_OFFSET], eax);
+//    gen.jmp((void*)m_returnFromBlock);
+//
+//    gen.L(noFastBoot);
+//}
 
 std::unique_ptr<PCSX::R3000Acpu> PCSX::Cpus::getDynaRec() { return std::unique_ptr<PCSX::R3000Acpu>(new DynaRecCPU()); }
 

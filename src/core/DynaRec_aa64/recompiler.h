@@ -462,7 +462,7 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     };
 
 
-    static constexpr bool ENABLE_BLOCK_LINKING = true;
+    static constexpr bool ENABLE_BLOCK_LINKING = false;
 };
 
 #endif  // DYNAREC_AA64
