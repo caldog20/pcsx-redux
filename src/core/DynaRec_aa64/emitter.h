@@ -108,6 +108,15 @@ public:
             Mov(dest, source);
         }
     }
+
+    // Returns whether dest is equal to value via the zero flag
+    void cmpEqImm(vixl::aarch64::Register dest, uint32_t value) {
+        if (value == 0) {
+            Tst(dest, dest);
+        } else {
+            Cmp(dest, value);
+        }
+    }
 };
 
 #endif // DYNAREC_AA64

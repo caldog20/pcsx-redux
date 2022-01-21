@@ -166,13 +166,14 @@ void DynaRecCPU::emitDispatcher() {
     gen.Str(x30, MemOperand(sp, -16, PreIndex));
     // Backup context pointer register
     gen.Str(contextPointer, MemOperand(sp, -16, PreIndex));
+    // Load context pointer register
+    gen.Mov(contextPointer, (uintptr_t)this);
     // Backup running pointer register
     gen.Str(runningPointer, MemOperand(contextPointer, HOST_REG_CACHE_OFFSET(0)));
 
     // Load running pointer register
     gen.Mov(runningPointer, (uintptr_t)PCSX::g_system->runningPtr());
-    // Load context pointer register
-    gen.Mov(contextPointer, (uintptr_t)this);
+
 
     emitBlockLookup();
 
@@ -182,7 +183,7 @@ void DynaRecCPU::emitDispatcher() {
     loadThisPointer(arg1.X());
     call(recBranchTestWrapper);
     gen.Ldr(x0, MemOperand(runningPointer));
-    gen.Tbz(x0, 1, &done);  // Check if PCSX::g_system->running is true
+    gen.Tbz(x0, 0, &done);  // Check if PCSX::g_system->running is true
     emitBlockLookup();                               // Otherwise, look up next block
 
     gen.align();
@@ -282,8 +283,8 @@ DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {
     flushRegs();
     if (!m_pcWrittenBack) {
 //        gen.mov(dword[contextPointer + PC_OFFSET], m_pc);
-        gen.Mov(scratch.X(), m_pc);
-        gen.Str(scratch.X(), MemOperand(contextPointer, PC_OFFSET));
+        gen.Mov(scratch, m_pc);
+        gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET));
     }
 
     // If this was the block at 0x8003'0000 (Start of shell) send the GUI a "shell reached" signal
@@ -294,14 +295,15 @@ DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {
         m_linkedPC = std::nullopt;
     }
 
-    gen.Mov(scratch.X(), count * PCSX::Emulator::BIAS);
-    gen.Str(scratch.X(), MemOperand(contextPointer, CYCLE_OFFSET));
+    gen.Mov(scratch, count * PCSX::Emulator::BIAS);
+    gen.Str(scratch, MemOperand(contextPointer, CYCLE_OFFSET));
     if (m_linkedPC && ENABLE_BLOCK_LINKING && m_linkedPC.value() != startingPC) {
         handleLinking();
     } else {
-        gen.Mov(scratch.X(), (uint64_t)m_returnFromBlock);
-        gen.Br(scratch.X());
+        jmp((void*)m_returnFromBlock);
     }
+    gen.dumpBuffer();
+    gen.ready();
     return pointer;
 }
 
@@ -339,7 +341,7 @@ void DynaRecCPU::handleKernelCall() {
 
 // Emits a jump to the dispatcher if there's no block to link to.
 // Otherwise, handle linking blocks
-void DynaRecCPU::handleLinking() { // TODO: Redo this whole thing
+void DynaRecCPU::handleLinking() { // TODO: Redo this whole thing it's broken
     vixl::aarch64::Label skipReturn1, skipReturn2;
     // Don't link unless the next PC is valid, and there's over 1MB of free space in the code cache
     if (isPcValid(m_linkedPC.value()) && gen.getRemainingSize() > 0x100000) {

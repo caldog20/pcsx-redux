@@ -33,7 +33,8 @@ void DynaRecCPU::recSpecial() {
     (*this.*func)();                                    // Jump into the handler to recompile it
 }
 
-void DynaRecCPU::recADD() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] ADD instruction"); }
+// The Dynarec doesn't currently handle overflow exceptions, so we treat ADD the same as ADDU
+void DynaRecCPU::recADD() { recADDU(); }
 
 
 void DynaRecCPU::recADDIU() {
@@ -60,29 +61,322 @@ void DynaRecCPU::recADDIU() {
 }
 
 
-void DynaRecCPU::recADDU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] ADDU instruction"); }
-void DynaRecCPU::recAND() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] AND instruction"); }
-void DynaRecCPU::recANDI() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] ANDI instruction"); }
-void DynaRecCPU::recBEQ() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] BEQ instruction"); }
-void DynaRecCPU::recBGTZ() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] BGTZ instruction"); }
-void DynaRecCPU::recBLEZ() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] BLEZ instruction"); }
-void DynaRecCPU::recBNE() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] BNE instruction"); }
-void DynaRecCPU::recBREAK() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] BREAK instruction"); }
-//void DynaRecCPU::recCFC2() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] CFC2 instruction"); }
-void DynaRecCPU::recCOP0() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] COP0 instruction"); }
-//void DynaRecCPU::recCOP2() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] COP2 instruction"); }
-//void DynaRecCPU::recCTC2() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] CTC2 instruction"); }
+void DynaRecCPU::recADDU() {
+    BAILZERO(_Rd_);
+    maybeCancelDelayedLoad(_Rd_);
+
+    if (m_regs[_Rs_].isConst() && m_regs[_Rt_].isConst()) {
+        markConst(_Rd_, m_regs[_Rs_].val + m_regs[_Rt_].val);
+    } else if (m_regs[_Rs_].isConst()) {
+        alloc_rt_wb_rd();
+
+        if (_Rt_ == _Rd_) {
+            gen.Add(m_regs[_Rd_].allocatedReg, m_regs[_Rd_].allocatedReg, m_regs[_Rs_].val);
+        } else {
+            gen.moveAndAdd(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg, m_regs[_Rs_].val);
+        }
+    } else if (m_regs[_Rt_].isConst()) {
+        alloc_rs_wb_rd();
+
+        if (_Rs_ == _Rd_) {
+            gen.Add(m_regs[_Rd_].allocatedReg, m_regs[_Rd_].allocatedReg, m_regs[_Rt_].val);
+        } else {
+            gen.moveAndAdd(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].val);
+        }
+    } else {
+        alloc_rt_rs_wb_rd();
+
+        if (_Rs_ == _Rd_) {  // Rd+= Rt
+            gen.Add(m_regs[_Rd_].allocatedReg, m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg);
+        } else if (_Rt_ == _Rd_) {  // Rd+= Rs
+            gen.Add(m_regs[_Rd_].allocatedReg, m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg);
+        } else {  // Rd = Rs + Rt
+            gen.Add(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].allocatedReg);
+        }
+    }
+}
+
+
+void DynaRecCPU::recAND() {
+    BAILZERO(_Rd_);
+    maybeCancelDelayedLoad(_Rd_);
+
+    if (m_regs[_Rs_].isConst() && m_regs[_Rt_].isConst()) {
+        markConst(_Rd_, m_regs[_Rs_].val & m_regs[_Rt_].val);
+    } else if (m_regs[_Rs_].isConst()) {
+        alloc_rt_wb_rd();
+
+        gen.And(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg, m_regs[_Rs_].val);
+    } else if (m_regs[_Rt_].isConst()) {
+        alloc_rs_wb_rd();
+
+        gen.And(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].val);
+    } else {
+        alloc_rt_rs_wb_rd();
+
+        if (_Rd_ == _Rs_) {
+            gen.And(m_regs[_Rd_].allocatedReg, m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg);
+        } else if (_Rd_ == _Rt_) {
+            gen.And(m_regs[_Rd_].allocatedReg, m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg);
+        } else {
+            gen.And(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg);
+        }
+    }
+}
+
+
+void DynaRecCPU::recANDI() {
+    BAILZERO(_Rt_);
+    maybeCancelDelayedLoad(_Rt_);
+
+    if (_Rs_ == _Rt_) {
+        if (m_regs[_Rs_].isConst()) {
+            m_regs[_Rt_].val &= _ImmU_;
+        } else {
+            allocateReg(_Rt_);
+            m_regs[_Rt_].setWriteback(true);
+            gen.And(m_regs[_Rt_].allocatedReg, m_regs[_Rt_].allocatedReg, _ImmU_);
+        }
+    } else {
+        if (m_regs[_Rs_].isConst()) {
+            markConst(_Rt_, m_regs[_Rs_].val & _ImmU_);
+        } else {
+            alloc_rs_wb_rt();
+            gen.And(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg, _ImmU_);
+        }
+    }
+}
+
+
+void DynaRecCPU::recBEQ() {
+    const auto target = _Imm_ * 4 + m_pc;
+    m_nextIsDelaySlot = true;
+
+    if (target == m_pc + 4) {
+        return;
+    }
+
+    if (m_regs[_Rs_].isConst() && m_regs[_Rt_].isConst()) {
+        if (m_regs[_Rs_].val == m_regs[_Rt_].val) {
+            m_pcWrittenBack = true;
+            m_stopCompiling = true;
+            gen.Mov(scratch, target);
+            gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET));
+
+            m_linkedPC = target;
+        }
+        return;
+    } else if (m_regs[_Rs_].isConst()) {
+        allocateReg(_Rt_);
+        gen.cmpEqImm(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].val);
+    } else if (m_regs[_Rt_].isConst()) {
+        allocateReg(_Rs_);
+        gen.cmpEqImm(m_regs[_Rs_].allocatedReg, m_regs[_Rt_].val);
+    } else {
+        alloc_rt_rs();
+        gen.Cmp(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg);
+    }
+
+    m_pcWrittenBack = true;
+    m_stopCompiling = true;
+    gen.Mov(w3, target); // addr if jump taken
+    gen.Mov(scratch, m_pc + 4); // addr if jump not taken
+    gen.Csel(w0, w3, scratch, vixl::aarch64::eq); // if equal, move the jump addr into w0
+    gen.Str(w0, MemOperand(contextPointer, PC_OFFSET));
+}
+
+
+void DynaRecCPU::recBGTZ() {
+    uint32_t target = _Imm_ * 4 + m_pc;
+
+    m_nextIsDelaySlot = true;
+    if (target == m_pc + 4) {
+        return;
+    }
+
+    if (m_regs[_Rs_].isConst()) {
+        if ((int32_t)m_regs[_Rs_].val > 0) {
+            m_pcWrittenBack = true;
+            m_stopCompiling = true;
+            gen.Mov(scratch, target);
+            gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET));
+            m_linkedPC = target;
+        }
+        return;
+    }
+
+    m_pcWrittenBack = true;
+    m_stopCompiling = true;
+
+    if (m_regs[_Rs_].isAllocated()) {  // Don't bother allocating Rs unless it's already allocated
+        gen.Tst(m_regs[_Rs_].allocatedReg, m_regs[_Rs_].allocatedReg);
+    } else {
+        gen.Ldr(scratch, MemOperand(contextPointer, GPR_OFFSET(_Rs_)));
+        gen.Cmp(scratch, 0);
+    }
+
+    gen.Mov(scratch, m_pc + 4); // scratch = addr if jump not taken
+    gen.Mov(w3, target); // w3 = addr if jump is taken
+    gen.Csel(w0, w3, scratch, gt); // if taken, move jump addr into w0
+    gen.Str(w0, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
+}
+
+
+void DynaRecCPU::recBLEZ() {
+    uint32_t target = _Imm_ * 4 + m_pc;
+
+    m_nextIsDelaySlot = true;
+    if (target == m_pc + 4) {
+        return;
+    }
+
+    if (m_regs[_Rs_].isConst()) {
+        if ((int32_t)m_regs[_Rs_].val <= 0) {
+            m_pcWrittenBack = true;
+            m_stopCompiling = true;
+            gen.Mov(scratch, target);
+            gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET));
+            m_linkedPC = target;
+        }
+        return;
+    }
+
+    m_pcWrittenBack = true;
+    m_stopCompiling = true;
+
+    if (m_regs[_Rs_].isAllocated()) {  // Don't bother allocating Rs unless it's already allocated
+        gen.Tst(m_regs[_Rs_].allocatedReg, m_regs[_Rs_].allocatedReg);
+    } else {
+        gen.Ldr(scratch, MemOperand(contextPointer, GPR_OFFSET(_Rs_)));
+        gen.Cmp(scratch, 0);
+    }
+
+
+    gen.Mov(scratch, m_pc + 4); // scratch = addr if jump not taken
+    gen.Mov(w3, target); // w3 = addr if jump is taken
+    gen.Csel(w0, w3, scratch, le); // if taken, move jump addr into w0
+    gen.Str(w0, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
+
+}
+
+
+void DynaRecCPU::recBNE() {
+    const auto target = _Imm_ * 4 + m_pc;
+    m_nextIsDelaySlot = true;
+
+    if (target == m_pc + 4) {
+        return;
+    }
+
+    if (m_regs[_Rs_].isConst() && m_regs[_Rt_].isConst()) {
+        if (m_regs[_Rs_].val != m_regs[_Rt_].val) {
+            m_pcWrittenBack = true;
+            m_stopCompiling = true;
+            gen.Mov(scratch, target);
+            gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET));
+            m_linkedPC = target;
+        }
+        return;
+    } else if (m_regs[_Rs_].isConst()) {
+        allocateReg(_Rt_);
+        gen.cmpEqImm(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].val);
+    } else if (m_regs[_Rt_].isConst()) {
+        allocateReg(_Rs_);
+        gen.cmpEqImm(m_regs[_Rs_].allocatedReg, m_regs[_Rt_].val);
+    } else {
+        alloc_rt_rs();
+        gen.Cmp(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg);
+    }
+
+    m_pcWrittenBack = true;
+    m_stopCompiling = true;
+
+    gen.Mov(scratch, m_pc + 4); // scratch = addr if jump not taken
+    gen.Mov(w3, target); // w3 = addr if jump is taken
+    gen.Csel(w0, w3, scratch, ne); // if taken, move jump addr into w0
+    gen.Str(w0, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
+}
+
+
+void DynaRecCPU::recBREAK() {
+    flushRegs();  // For PCDRV support, we need to flush all registers before handling the exception.
+    recException(Exception::Break);
+}
+
+
+void DynaRecCPU::recCOP0() {
+    switch (_Rs_) {  // figure out the type of COP0 opcode
+        case 0:
+            recMFC0();
+            break;
+        case 4:
+            recMTC0();
+            break;
+        case 16:
+            recRFE();
+            break;
+        default:
+            fmt::print("Unimplemented cop0 op {}\n", _Rs_);
+            recUnknown();
+            break;
+    }
+}
+
+
 void DynaRecCPU::recDIV() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] DIV instruction"); }
 void DynaRecCPU::recDIVU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] DIVU instruction"); }
-void DynaRecCPU::recJ() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] J instruction"); }
-void DynaRecCPU::recJAL() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] JAL instruction"); }
-void DynaRecCPU::recJALR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] JALR instruction"); }
-void DynaRecCPU::recJR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] JR instruction"); }
-void DynaRecCPU::recLB() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LB instruction"); }
-void DynaRecCPU::recLBU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LBU instruction"); }
-void DynaRecCPU::recLH() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LH instruction"); }
-void DynaRecCPU::recLHU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LHU instruction"); }
 
+
+void DynaRecCPU::recJ() {
+    const uint32_t target = (m_pc & 0xf0000000) | (_Target_ << 2);
+    m_nextIsDelaySlot = true;
+    m_stopCompiling = true;
+    m_pcWrittenBack = true;
+    gen.Mov(scratch, target);
+    gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET)); // Write PC
+    m_linkedPC = target;
+    gen.dumpBuffer();
+}
+
+
+void DynaRecCPU::recJAL() {
+    maybeCancelDelayedLoad(31);
+    markConst(31, m_pc + 4);  // Set $ra to the return value, then treat instruction like a normal J
+    recJ();
+}
+
+
+void DynaRecCPU::recJALR() {
+    recJR();
+
+    if (_Rd_) {
+        maybeCancelDelayedLoad(_Rd_);
+        markConst(_Rd_, m_pc + 4);  // Link
+    }
+}
+
+void DynaRecCPU::recJR() {
+    m_nextIsDelaySlot = true;
+    m_stopCompiling = true;
+    m_pcWrittenBack = true;
+
+    if (m_regs[_Rs_].isConst()) {
+        gen.Mov(scratch, m_regs[_Rs_].val & ~3);
+        gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET));
+        m_linkedPC = m_regs[_Rs_].val;
+    } else {
+        allocateReg(_Rs_);
+        // PC will get force aligned in the dispatcher since it discards the 2 lower bits
+        gen.Str(m_regs[_Rs_].allocatedReg, MemOperand(contextPointer, PC_OFFSET));
+    }
+}
+
+
+void DynaRecCPU::recLB() { recompileLoad<8, true>(); }
+void DynaRecCPU::recLBU() { recompileLoad<8, false>(); }
+void DynaRecCPU::recLH() { recompileLoad<16, true>(); }
+void DynaRecCPU::recLHU() { recompileLoad<16, false>(); }
+void DynaRecCPU::recLW() { recompileLoad<32, true>(); }
 
 void DynaRecCPU::recLUI() {
 
@@ -93,7 +387,59 @@ void DynaRecCPU::recLUI() {
 }
 
 
-void DynaRecCPU::recLW() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LW instruction"); }
+template <int size, bool signExtend>
+void DynaRecCPU::recompileLoad() {
+    if (m_regs[_Rs_].isConst()) {  // Store the address in first argument register
+        const uint32_t addr = m_regs[_Rs_].val + _Imm_;
+        const auto pointer = PCSX::g_emulator->m_psxMem->psxMemPointerRead(addr);
+
+        if (pointer != nullptr && (_Rt_) != 0) {
+            allocateRegWithoutLoad(_Rt_);
+            m_regs[_Rt_].setWriteback(true);
+            load<size, signExtend>(m_regs[_Rt_].allocatedReg, pointer);
+            return;
+        }
+
+        gen.mov(arg1, addr);
+    } else {
+        allocateReg(_Rs_);
+        gen.moveAndAdd(arg1, m_regs[_Rs_].allocatedReg, _Imm_);
+    }
+
+    switch (size) {
+        case 8:
+            call(psxMemRead8Wrapper);
+            break;
+        case 16:
+            call(psxMemRead16Wrapper);
+            break;
+        case 32:
+            call(psxMemRead32Wrapper);
+            break;
+        default:
+            PCSX::g_system->message("Invalid size for memory load in dynarec. Instruction %08x\n", m_psxRegs.code);
+            break;
+    }
+
+    if (_Rt_) {
+        allocateRegWithoutLoad(_Rt_);  // Allocate $rt after calling the read function, otherwise call() might flush it.
+        m_regs[_Rt_].setWriteback(true);
+
+        switch (size) {
+            case 8:
+                signExtend ? gen.Sxtb(m_regs[_Rt_].allocatedReg, w0) : gen.Uxtb(m_regs[_Rt_].allocatedReg, w0);
+                break;
+            case 16:
+                signExtend ? gen.Sxth(m_regs[_Rt_].allocatedReg, w0) : gen.Uxth(m_regs[_Rt_].allocatedReg, w0);
+                break;
+            case 32:
+                gen.Mov(m_regs[_Rt_].allocatedReg, w0);
+                break;
+        }
+    }
+}
+
+
 //void DynaRecCPU::recLWC2() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LWC2 instruction"); }
 void DynaRecCPU::recLWL() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LWL instruction"); }
 void DynaRecCPU::recLWR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LWR instruction"); }
@@ -108,7 +454,27 @@ void DynaRecCPU::recMTLO() { gen.dumpBuffer(); throw std::runtime_error("[Unimpl
 void DynaRecCPU::recMULT() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MULT instruction"); }
 void DynaRecCPU::recMULTU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MULTU instruction"); }
 void DynaRecCPU::recNOR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] NOR instruction"); }
-void DynaRecCPU::recOR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] OR instruction"); }
+
+
+void DynaRecCPU::recOR() {
+    BAILZERO(_Rd_);
+    maybeCancelDelayedLoad(_Rd_);
+
+    if (m_regs[_Rs_].isConst() && m_regs[_Rt_].isConst()) {
+        markConst(_Rd_, m_regs[_Rs_].val | m_regs[_Rt_].val);
+    } else if (m_regs[_Rs_].isConst()) {
+        alloc_rt_wb_rd();
+
+        gen.Orr(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg, m_regs[_Rs_].val);
+    } else if (m_regs[_Rt_].isConst()) {
+        alloc_rs_wb_rd();
+
+        gen.Orr(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].val);
+    } else {
+        alloc_rt_rs_wb_rd();
+        gen.Orr(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].allocatedReg);
+    }
+}
 
 
 void DynaRecCPU::recORI() {
@@ -163,7 +529,11 @@ void DynaRecCPU::recSRA() { gen.dumpBuffer(); throw std::runtime_error("[Unimple
 void DynaRecCPU::recSRAV() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SRAV instruction"); }
 void DynaRecCPU::recSRL() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SRL instruction"); }
 void DynaRecCPU::recSRLV() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SRLV instruction"); }
-void DynaRecCPU::recSUB() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SUB instruction"); }
+
+
+void DynaRecCPU::recSUB() { recSUBU(); }
+
+
 void DynaRecCPU::recSUBU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SUBU instruction"); }
 
 
@@ -213,10 +583,68 @@ void DynaRecCPU::recSW() {
 //void DynaRecCPU::recSWC2() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SWC2 instruction"); }
 void DynaRecCPU::recSWL() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SWL instruction"); }
 void DynaRecCPU::recSWR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SWR instruction"); }
-void DynaRecCPU::recSYSCALL() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SYSCALL instruction"); }
-void DynaRecCPU::recXOR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] XOR instruction"); }
-void DynaRecCPU::recXORI() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] XORI instruction"); }
-void DynaRecCPU::recException(Exception e) { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] Recompile exception"); }
+
+
+void DynaRecCPU::recSYSCALL() { recException(Exception::Syscall); }
+
+
+void DynaRecCPU::recXOR() {
+    BAILZERO(_Rd_);
+    maybeCancelDelayedLoad(_Rd_);
+
+    if (m_regs[_Rs_].isConst() && m_regs[_Rt_].isConst()) {
+        markConst(_Rd_, m_regs[_Rs_].val ^ m_regs[_Rt_].val);
+    } else if (m_regs[_Rs_].isConst()) {
+        alloc_rt_wb_rd();
+        gen.Eor(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg, m_regs[_Rs_].val);
+    } else if (m_regs[_Rt_].isConst()) {
+        alloc_rs_wb_rd();
+        gen.Eor(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].val);
+    } else {
+        alloc_rt_rs_wb_rd();
+        gen.Eor(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg);
+    }
+}
+
+
+void DynaRecCPU::recXORI() {
+    BAILZERO(_Rt_);
+    maybeCancelDelayedLoad(_Rt_);
+
+    if (_Rs_ == _Rt_) {
+        if (m_regs[_Rs_].isConst()) {
+            m_regs[_Rt_].val ^= _ImmU_;
+        } else {
+            allocateReg(_Rt_);
+            m_regs[_Rt_].setWriteback(true);
+            gen.Eor(m_regs[_Rt_].allocatedReg, m_regs[_Rt_].allocatedReg, _ImmU_);
+        }
+    } else {
+        if (m_regs[_Rs_].isConst()) {
+            markConst(_Rt_, m_regs[_Rs_].val ^ _ImmU_);
+        } else {
+            alloc_rs_wb_rt();
+            gen.Mov(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg);
+            if (_ImmU_) {
+                gen.Eor(m_regs[_Rt_].allocatedReg, m_regs[_Rt_].allocatedReg, _ImmU_);
+            }
+        }
+    }
+}
+
+
+void DynaRecCPU::recException(Exception e) {
+    m_pcWrittenBack = true;
+    m_stopCompiling = true;
+
+    loadThisPointer(arg1.X());                                                  // Pointer to this object in arg1
+    gen.Mov(arg2, static_cast<std::underlying_type<Exception>::type>(e) << 2); // Exception type in arg2
+    gen.Mov(arg3, (int32_t)m_inDelaySlot);             // Store whether we're in a delay slot in arg3
+    gen.Mov(scratch, m_pc - 4);
+    gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET)); // PC for exception handler to use
+
+    call(psxExceptionWrapper);  // Call the exception wrapper
+}
 
 #undef BAILZERO
 #endif  // DYNAREC_AA64

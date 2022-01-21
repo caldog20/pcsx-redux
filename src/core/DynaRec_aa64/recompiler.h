@@ -218,40 +218,41 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     }
 
   private:
-
     // Loads a value into dest from the given pointer.
+    // TODO: This may need to use contextPointer + distance instead
     template <int size, bool signExtend>
     void load(vixl::aarch64::Register dest, const void* pointer) {
         const auto distance = (intptr_t)pointer - (intptr_t)this;
         gen.Mov(x0, (uintptr_t)pointer);
         switch (size) {
             case 8:
-                signExtend ? gen.Ldrsb(dest, MemOperand(x0)) : gen.Ldrb(dest, MemOperand(x0));
+                signExtend ? gen.Ldrsb(dest, MemOperand(contextPointer, distance)) : gen.Ldrb(dest, MemOperand(contextPointer, distance));
                 break;
             case 16:
-                signExtend ? gen.Ldrsh(dest, MemOperand(x0)) : gen.Ldrh(dest, MemOperand(x0));
+                signExtend ? gen.Ldrsh(dest, MemOperand(contextPointer, distance)) : gen.Ldrh(dest, MemOperand(contextPointer, distance));
                 break;
             case 32:
-                gen.Ldr(dest, MemOperand(x0));
+                gen.Ldr(dest, MemOperand(contextPointer, distance));
                 break;
         }
     }
 
     // Stores a value of "size" bits from "source" to the given pointer
     /* TODO: value must be moved into register first before it can be stored unlike x64 with can use mov to write to memory */
+    // TODO: This may need to use contextPointer + distance instead
     template <int size, typename T>
     void store(T source, const void* pointer) {
         const auto distance = (intptr_t)pointer - (intptr_t)this;
-        gen.mov(x0, (uintptr_t)pointer);
+//        gen.mov(x0, (uintptr_t)pointer);
         switch (size) {
             case 8:
-                gen.Strb(source, MemOperand(x0));
+                gen.Strb(source, MemOperand(contextPointer, distance));
                 break;
             case 16:
-                gen.Strh(source, MemOperand(x0));
+                gen.Strh(source, MemOperand(contextPointer, distance));
                 break;
             case 32:
-                gen.Str(source, MemOperand(x0));
+                gen.Str(source, MemOperand(contextPointer, distance));
                 break;
         }
     }
@@ -403,6 +404,8 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     void recRTPS();
     void recRTPT();
     void recSQR();
+    template <int size, bool signExtend>
+    void recompileLoad();
 
     const recompilationFunc m_recBSC[64] = {
         &DynaRecCPU::recSpecial, &DynaRecCPU::recREGIMM,  &DynaRecCPU::recJ,       &DynaRecCPU::recJAL,      // 00
