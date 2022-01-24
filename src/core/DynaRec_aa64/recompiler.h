@@ -279,7 +279,7 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
         }
     }
 
-    // Fix this, jmp function using same method as call to attempt direct jump
+    // jmp function using same method as call to attempt direct jump
     void jmp(void * pointer) {
         const int64_t disp = getPCOffset(gen.getCurr<const void*>(), pointer);
 
