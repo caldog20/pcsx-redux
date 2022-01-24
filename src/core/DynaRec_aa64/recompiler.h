@@ -284,7 +284,7 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
         const int64_t disp = getPCOffset(gen.getCurr<const void*>(), pointer);
 
         // If the displacement can fit in a 26-bit int, that means we can emit a direct call to the address
-        // Otherwise, load the address into a register and emit a blr
+        // Otherwise, load the address into a register and emit a br
         const bool canDoDirectJump = vixl::IsInt26(disp);
 
         if (canDoDirectJump) {
