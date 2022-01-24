@@ -223,7 +223,7 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     template <int size, bool signExtend>
     void load(vixl::aarch64::Register dest, const void* pointer) {
         const auto distance = (intptr_t)pointer - (intptr_t)this;
-        gen.Mov(x0, (uintptr_t)pointer);
+//        gen.Mov(x0, (uintptr_t)pointer);
         switch (size) {
             case 8:
                 signExtend ? gen.Ldrsb(dest, MemOperand(contextPointer, distance)) : gen.Ldrb(dest, MemOperand(contextPointer, distance));
@@ -406,6 +406,9 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     void recSQR();
     template <int size, bool signExtend>
     void recompileLoad();
+
+    template <bool readSR>
+    void testSoftwareInterrupt();
 
     const recompilationFunc m_recBSC[64] = {
         &DynaRecCPU::recSpecial, &DynaRecCPU::recREGIMM,  &DynaRecCPU::recJ,       &DynaRecCPU::recJAL,      // 00
