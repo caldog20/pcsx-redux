@@ -31,12 +31,11 @@ using namespace vixl::aarch64;
 
 const Register contextPointer = x19;
 const Register runningPointer = x20;
-const int ALLOCATEABLE_REG_COUNT = 19;
+const int ALLOCATEABLE_REG_COUNT = 14;
 const int ALLOCATEABLE_NON_VOLATILE_COUNT = 8;
 const std::array<Register, ALLOCATEABLE_REG_COUNT> allocateableRegisters = {w21, w22, w23, w24, w25, w26, w27, w28,
-                                                                                 w8, w9, w10, w11, w12, w13, w14, w15,
-                                                                                 w16, w17, w18};
-const std::array<Register, 11> allocateableVolatiles = {w8, w9, w10, w11, w12, w13, w14, w15, w16, w17, w18};
+                                                                                 w10, w11, w12, w13, w14, w15};
+const std::array<Register, 6> allocateableVolatiles = {w10, w11, w12, w13, w14, w15};
 const std::array<Register, 8> allocateableNonVolatiles = {w21, w22, w23, w24, w25, w26, w27, w28};
 
 const Register arg1 = w0;
@@ -44,6 +43,7 @@ const Register arg2 = w1;
 const Register arg3 = w2;
 const Register arg4 = w3;
 const Register scratch = w5;
+const Register scratch2 = w6;
 #define IS_VOLATILE(x) ((x) >= ALLOCATEABLE_NON_VOLATILE_COUNT)
 
 

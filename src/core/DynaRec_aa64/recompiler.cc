@@ -1,21 +1,21 @@
 /***************************************************************************
- *   Copyright (C) 2021 PCSX-Redux authors                                 *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
- ***************************************************************************/
+*   Copyright (C) 2021 PCSX-Redux authors                                 *
+*                                                                         *
+*   This program is free software; you can redistribute it and/or modify  *
+*   it under the terms of the GNU General Public License as published by  *
+*   the Free Software Foundation; either version 2 of the License, or     *
+*   (at your option) any later version.                                   *
+*                                                                         *
+*   This program is distributed in the hope that it will be useful,       *
+*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+*   GNU General Public License for more details.                          *
+*                                                                         *
+*   You should have received a copy of the GNU General Public License     *
+*   along with this program; if not, write to the                         *
+*   Free Software Foundation, Inc.,                                       *
+*   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+***************************************************************************/
 
 #include "recompiler.h"
 
@@ -93,6 +93,8 @@ void DynaRecCPU::Reset() {
     Shutdown();          // Deinit and re-init dynarec
     Init();
 }
+
+std::unique_ptr<PCSX::R3000Acpu> PCSX::Cpus::getDynaRec() { return std::unique_ptr<PCSX::R3000Acpu>(new DynaRecCPU()); }
 
 void DynaRecCPU::signalShellReached(DynaRecCPU* that) {
     if (!that->m_shellStarted) {
@@ -183,7 +185,7 @@ void DynaRecCPU::emitDispatcher() {
     loadThisPointer(arg1.X());
     call(recBranchTestWrapper);
     gen.Ldr(x0, MemOperand(runningPointer));
-    gen.Tbz(x0, 0, &done);  // Check if PCSX::g_system->running is true
+    gen.Tbz(w0, 0,  &done);  // Check if PCSX::g_system->running is true
     emitBlockLookup();                               // Otherwise, look up next block
 
     gen.align();
@@ -212,14 +214,16 @@ void DynaRecCPU::emitDispatcher() {
     m_uncompiledBlock = gen.getCurr<DynarecCallback>();
 
     loadThisPointer(arg1.X());
-    gen.Mov(arg2.X(), x3);
-    gen.Lsl(arg2.X(), arg2.X(), 1);
+    // TODO: Check support for add with lsl
+    gen.Lsl(arg2.X(), x3, 1);
     gen.Add(arg2.X(), arg2.X(), x0);
     call(recRecompileWrapper);
     gen.Br(x0);
 
     gen.align();
     m_invalidBlock = gen.getCurr<DynarecCallback>();
+
+    loadThisPointer(arg1.X());
     call(recErrorWrapper);
     gen.B(&done);
     gen.ready();
@@ -243,6 +247,9 @@ DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {
     if (gen.getSize() > codeCacheSize) {  // Flush JIT cache if we've gone above the acceptable size
         flushCache();
     }
+
+//    gen.dc32(0x42042069);
+//    gen.dc32(m_pc);
 
     const auto pointer = gen.getCurr<DynarecCallback>();  // Pointer to emitted code
 
@@ -275,14 +282,15 @@ DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {
         m_psxRegs.code = *p;  // Actually read the instruction
         m_pc += 4;            // Increment recompiler PC
         count++;              // Increment instruction count
-
+        emitLog();
         const auto func = m_recBSC[m_psxRegs.code >> 26];  // Look up the opcode in our decoding LUT
         (*this.*func)();                                   // Jump into the handler to recompile it
+//        gen.brk(0);
+
     }
 
     flushRegs();
     if (!m_pcWrittenBack) {
-//        gen.mov(dword[contextPointer + PC_OFFSET], m_pc);
         gen.Mov(scratch, m_pc);
         gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET));
     }
@@ -304,7 +312,9 @@ DynarecCallback DynaRecCPU::recompile(DynarecCallback* callback, uint32_t pc) {
     }
     gen.dumpBuffer();
     gen.ready();
+    __builtin___clear_cache(gen.getCode<char *>(), gen.getCode<char*>() + allocSize);
     return pointer;
+
 }
 
 // Checks if the block being compiled is one of the kernel call vectors
@@ -402,6 +412,6 @@ void DynaRecCPU::handleLinking() { // TODO: Redo this whole thing it's broken
 //    gen.L(noFastBoot);
 //}
 
-std::unique_ptr<PCSX::R3000Acpu> PCSX::Cpus::getDynaRec() { return std::unique_ptr<PCSX::R3000Acpu>(new DynaRecCPU()); }
+
 
 #endif // DYNAREC_AA64

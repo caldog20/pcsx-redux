@@ -60,6 +60,12 @@ static void psxMemWrite32Wrapper(uint32_t address, uint32_t value) {
     PCSX::g_emulator->m_psxMem->psxMemWrite32(address, value);
 }
 
+static void log_instruction(uint32_t pc) {
+    printf("Emulating instruction @ %08X\n", pc);
+}
+
+
+
 using DynarecCallback = void (*)();  // A function pointer to JIT-emitted code
 using namespace vixl::aarch64;
 
@@ -158,6 +164,12 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     static void recBranchTestWrapper(DynaRecCPU* that) { that->psxBranchTest(); }
     static void recErrorWrapper(DynaRecCPU* that) { that->error(); }
 
+    void emitLog() {
+        gen.Mov(arg1, m_pc);
+        call(log_instruction);
+    }
+
+
     static void signalShellReached(DynaRecCPU* that);
     static DynarecCallback recRecompileWrapper(DynaRecCPU* that, DynarecCallback* callback) {
         return that->recompile(callback, that->m_psxRegs.pc);
@@ -201,10 +213,12 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
         (*m_dispatcher)();  // Jump to assembly dispatcher
     }
     virtual void Clear(uint32_t addr, uint32_t size) final {
+        printf("Calling clear. Address: %08X, size: %d\n", addr, size);
         auto pointer = getBlockPointer(addr);
         for (auto i = 0; i < size; i++) {
             *pointer++ = m_uncompiledBlock;
         }
+        printf("Clear");
     }
     virtual void Shutdown() final;
     virtual bool isDynarec() final { return true; }
@@ -223,16 +237,16 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     template <int size, bool signExtend>
     void load(vixl::aarch64::Register dest, const void* pointer) {
         const auto distance = (intptr_t)pointer - (intptr_t)this;
-//        gen.Mov(x0, (uintptr_t)pointer);
+        gen.Mov(x0, (uintptr_t)pointer);
         switch (size) {
             case 8:
-                signExtend ? gen.Ldrsb(dest, MemOperand(contextPointer, distance)) : gen.Ldrb(dest, MemOperand(contextPointer, distance));
+                signExtend ? gen.Ldrsb(dest, MemOperand(x0)) : gen.Ldrb(dest, MemOperand(x0));
                 break;
             case 16:
-                signExtend ? gen.Ldrsh(dest, MemOperand(contextPointer, distance)) : gen.Ldrh(dest, MemOperand(contextPointer, distance));
+                signExtend ? gen.Ldrsh(dest, MemOperand(x0)) : gen.Ldrh(dest, MemOperand(x0));
                 break;
             case 32:
-                gen.Ldr(dest, MemOperand(contextPointer, distance));
+                gen.Ldr(dest, MemOperand(x0));
                 break;
         }
     }
@@ -243,16 +257,16 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
     template <int size, typename T>
     void store(T source, const void* pointer) {
         const auto distance = (intptr_t)pointer - (intptr_t)this;
-//        gen.mov(x0, (uintptr_t)pointer);
+        gen.Mov(x0, (uintptr_t)pointer);
         switch (size) {
             case 8:
-                gen.Strb(source, MemOperand(contextPointer, distance));
+                gen.Strb(source, MemOperand(x0));
                 break;
             case 16:
-                gen.Strh(source, MemOperand(contextPointer, distance));
+                gen.Strh(source, MemOperand(x0));
                 break;
             case 32:
-                gen.Str(source, MemOperand(contextPointer, distance));
+                gen.Str(source, MemOperand(x0));
                 break;
         }
     }
@@ -269,14 +283,16 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
 
         // If the displacement can fit in a 26-bit int, that means we can emit a direct call to the address
         // Otherwise, load the address into a register and emit a blr
-        const bool canDoDirectCall = vixl::IsInt26(disp);
-
-        if (canDoDirectCall) {
-            gen.bl(disp);
-        } else {
-            gen.Mov(scratch, (uintptr_t)ptr);
-            gen.Blr(scratch);
-        }
+//        const bool canDoDirectCall = vixl::IsInt26(disp);
+//
+//        if (canDoDirectCall) {
+//            gen.bl(disp);
+//        } else {
+//            gen.Mov(scratch, (uintptr_t)ptr);
+//            gen.Blr(scratch);
+//        }
+        gen.Mov(scratch.X(), (uintptr_t)ptr);
+        gen.Blr(scratch.X());
     }
 
     // jmp function using same method as call to attempt direct jump
@@ -287,12 +303,12 @@ class DynaRecCPU final : public PCSX::R3000Acpu {
         // Otherwise, load the address into a register and emit a br
         const bool canDoDirectJump = vixl::IsInt26(disp);
 
-        if (canDoDirectJump) {
-            gen.b(disp);
-        } else {
-            gen.Mov(scratch, (uintptr_t)pointer);
-            gen.Br(scratch);
-        }
+//        if (canDoDirectJump) {
+//            gen.b(disp);
+//        } else {
+            gen.Mov(scratch.X(), (uintptr_t)pointer);
+            gen.Br(scratch.X());
+//        }
     }
 
     // Calculate the number of instructions between the current PC and the branch target

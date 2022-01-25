@@ -38,6 +38,7 @@ void DynaRecCPU::recADD() { recADDU(); }
 
 
 void DynaRecCPU::recADDIU() {
+    printf("recADDIU\n");
     BAILZERO(_Rt_);
     maybeCancelDelayedLoad(_Rt_);
 
@@ -62,6 +63,7 @@ void DynaRecCPU::recADDIU() {
 
 
 void DynaRecCPU::recADDU() {
+    printf("recADDU\n");
     BAILZERO(_Rd_);
     maybeCancelDelayedLoad(_Rd_);
 
@@ -98,6 +100,7 @@ void DynaRecCPU::recADDU() {
 
 
 void DynaRecCPU::recAND() {
+    printf("recAND\n");
     BAILZERO(_Rd_);
     maybeCancelDelayedLoad(_Rd_);
 
@@ -126,6 +129,7 @@ void DynaRecCPU::recAND() {
 
 
 void DynaRecCPU::recANDI() {
+    printf("recANDI\n");
     BAILZERO(_Rt_);
     maybeCancelDelayedLoad(_Rt_);
 
@@ -149,6 +153,7 @@ void DynaRecCPU::recANDI() {
 
 
 void DynaRecCPU::recBEQ() {
+    printf("recBEQ\n");
     const auto target = _Imm_ * 4 + m_pc;
     m_nextIsDelaySlot = true;
 
@@ -179,14 +184,15 @@ void DynaRecCPU::recBEQ() {
 
     m_pcWrittenBack = true;
     m_stopCompiling = true;
-    gen.Mov(w3, target); // addr if jump taken
-    gen.Mov(scratch, m_pc + 4); // addr if jump not taken
-    gen.Csel(w0, w3, scratch, vixl::aarch64::eq); // if equal, move the jump addr into w0
-    gen.Str(w0, MemOperand(contextPointer, PC_OFFSET));
+    gen.Mov(w6, m_pc + 4); // addr if jump not taken
+    gen.Mov(w7, target); // addr if jump taken
+    gen.Csel(w5, w7, w6, vixl::aarch64::eq); // if equal, move the jump addr into w0
+    gen.Str(w5, MemOperand(contextPointer, PC_OFFSET));
 }
 
 
 void DynaRecCPU::recBGTZ() {
+    printf("recBGTZ\n");
     uint32_t target = _Imm_ * 4 + m_pc;
 
     m_nextIsDelaySlot = true;
@@ -215,14 +221,16 @@ void DynaRecCPU::recBGTZ() {
         gen.Cmp(scratch, 0);
     }
 
-    gen.Mov(scratch, m_pc + 4); // scratch = addr if jump not taken
-    gen.Mov(w3, target); // w3 = addr if jump is taken
-    gen.Csel(w0, w3, scratch, gt); // if taken, move jump addr into w0
-    gen.Str(w0, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
+    gen.Mov(w6, m_pc + 4); // scratch = addr if jump not taken
+    gen.Mov(w7, target); // w3 = addr if jump is taken
+    gen.Csel(w5, w7, w6, gt); // if taken, move jump addr into w0
+    gen.Str(w5, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
+
 }
 
 
 void DynaRecCPU::recBLEZ() {
+    printf("recBLEZ\n");
     uint32_t target = _Imm_ * 4 + m_pc;
 
     m_nextIsDelaySlot = true;
@@ -252,15 +260,16 @@ void DynaRecCPU::recBLEZ() {
     }
 
 
-    gen.Mov(scratch, m_pc + 4); // scratch = addr if jump not taken
-    gen.Mov(w3, target); // w3 = addr if jump is taken
-    gen.Csel(w0, w3, scratch, le); // if taken, move jump addr into w0
-    gen.Str(w0, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
+    gen.Mov(w6, m_pc + 4); // scratch = addr if jump not taken
+    gen.Mov(w7, target); // w3 = addr if jump is taken
+    gen.Csel(w5, w7, w6, le); // if taken, move jump addr into w0
+    gen.Str(w5, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
 
 }
 
 
 void DynaRecCPU::recBNE() {
+    printf("recBNE\n");
     const auto target = _Imm_ * 4 + m_pc;
     m_nextIsDelaySlot = true;
 
@@ -291,20 +300,22 @@ void DynaRecCPU::recBNE() {
     m_pcWrittenBack = true;
     m_stopCompiling = true;
 
-    gen.Mov(scratch, m_pc + 4); // scratch = addr if jump not taken
-    gen.Mov(w3, target); // w3 = addr if jump is taken
-    gen.Csel(w0, w3, scratch, ne); // if taken, move jump addr into w0
-    gen.Str(w0, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
+    gen.Mov(w6, m_pc + 4); // scratch = addr if jump not taken
+    gen.Mov(w7, target); // w7 = addr if jump is taken
+    gen.Csel(w5, w7, w6, vixl::aarch64::ne); // if taken, move jump addr into w0
+    gen.Str(w5, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
 }
 
 
 void DynaRecCPU::recBREAK() {
+    printf("recBREAK\n");
     flushRegs();  // For PCDRV support, we need to flush all registers before handling the exception.
     recException(Exception::Break);
 }
 
 
 void DynaRecCPU::recCOP0() {
+    printf("recCOP0\n");
     switch (_Rs_) {  // figure out the type of COP0 opcode
         case 0:
             recMFC0();
@@ -328,6 +339,7 @@ void DynaRecCPU::recDIVU() { gen.dumpBuffer(); throw std::runtime_error("[Unimpl
 
 
 void DynaRecCPU::recJ() {
+    printf("recJ\n");
     const uint32_t target = (m_pc & 0xf0000000) | (_Target_ << 2);
     m_nextIsDelaySlot = true;
     m_stopCompiling = true;
@@ -340,6 +352,7 @@ void DynaRecCPU::recJ() {
 
 
 void DynaRecCPU::recJAL() {
+    printf("recJAL\n");
     maybeCancelDelayedLoad(31);
     markConst(31, m_pc + 4);  // Set $ra to the return value, then treat instruction like a normal J
     recJ();
@@ -347,6 +360,7 @@ void DynaRecCPU::recJAL() {
 
 
 void DynaRecCPU::recJALR() {
+    printf("recJALR\n");
     recJR();
 
     if (_Rd_) {
@@ -356,6 +370,7 @@ void DynaRecCPU::recJALR() {
 }
 
 void DynaRecCPU::recJR() {
+    printf("recJR\n");
     m_nextIsDelaySlot = true;
     m_stopCompiling = true;
     m_pcWrittenBack = true;
@@ -379,7 +394,7 @@ void DynaRecCPU::recLHU() { recompileLoad<16, false>(); }
 void DynaRecCPU::recLW() { recompileLoad<32, true>(); }
 
 void DynaRecCPU::recLUI() {
-
+    printf("recLUI\n");
     BAILZERO(_Rt_);
 
     maybeCancelDelayedLoad(_Rt_);
@@ -389,6 +404,7 @@ void DynaRecCPU::recLUI() {
 
 template <int size, bool signExtend>
 void DynaRecCPU::recompileLoad() {
+    printf("recompileLoad\n");
     if (m_regs[_Rs_].isConst()) {  // Store the address in first argument register
         const uint32_t addr = m_regs[_Rs_].val + _Imm_;
         const auto pointer = PCSX::g_emulator->m_psxMem->psxMemPointerRead(addr);
@@ -446,7 +462,7 @@ void DynaRecCPU::recLWR() { gen.dumpBuffer(); throw std::runtime_error("[Unimple
 
 
 void DynaRecCPU::recMFC0() {
-    PCSX::g_system->message("recMFC0\n");
+    printf("recMFC0\n");
     BAILZERO(_Rt_);
     maybeCancelDelayedLoad(_Rt_);
     allocateRegWithoutLoad(_Rt_);
@@ -461,7 +477,7 @@ void DynaRecCPU::recMFLO() { gen.dumpBuffer(); throw std::runtime_error("[Unimpl
 
 // TODO: Handle all COP0 register writes properly. Don't treat read-only field as writeable!
 void DynaRecCPU::recMTC0() {
-    PCSX::g_system->message("recMTC0\n");
+    printf("recMTC0\n");
     if (m_regs[_Rt_].isConst()) {
         if (_Rd_ == 13) {
                 gen.Mov(scratch,  m_regs[_Rt_].val & ~0xFC00);
@@ -488,7 +504,7 @@ void DynaRecCPU::recMTC0() {
 }
 
 //void DynaRecCPU::recMTC2() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MTC2 instruction"); }
-void DynaRecCPU::recMTHI() { gen.dumpBuffer(); gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MTHI instruction"); }
+void DynaRecCPU::recMTHI() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MTHI instruction"); }
 void DynaRecCPU::recMTLO() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MTLP instruction"); }
 void DynaRecCPU::recMULT() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MULT instruction"); }
 void DynaRecCPU::recMULTU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MULTU instruction"); }
@@ -496,6 +512,7 @@ void DynaRecCPU::recNOR() { gen.dumpBuffer(); throw std::runtime_error("[Unimple
 
 
 void DynaRecCPU::recOR() {
+    printf("recOR\n");
     BAILZERO(_Rd_);
     maybeCancelDelayedLoad(_Rd_);
 
@@ -504,11 +521,11 @@ void DynaRecCPU::recOR() {
     } else if (m_regs[_Rs_].isConst()) {
         alloc_rt_wb_rd();
 
-        gen.Orr(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg, m_regs[_Rs_].val);
+        gen.orImm(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg, m_regs[_Rs_].val);
     } else if (m_regs[_Rt_].isConst()) {
         alloc_rs_wb_rd();
 
-        gen.Orr(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].val);
+        gen.orImm(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].val);
     } else {
         alloc_rt_rs_wb_rd();
         gen.Orr(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].allocatedReg);
@@ -517,6 +534,7 @@ void DynaRecCPU::recOR() {
 
 
 void DynaRecCPU::recORI() {
+    printf("recORI\n");
     BAILZERO(_Rt_);
     maybeCancelDelayedLoad(_Rt_);
 
@@ -533,8 +551,7 @@ void DynaRecCPU::recORI() {
             markConst(_Rt_, m_regs[_Rs_].val | _ImmU_);
         } else {
             alloc_rs_wb_rt();
-            gen.Mov(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg);
-            gen.Orr(m_regs[_Rt_].allocatedReg, m_regs[_Rt_].allocatedReg, _ImmU_);
+            gen.Orr(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg, _ImmU_);
         }
     }
 }
@@ -547,6 +564,7 @@ void DynaRecCPU::recSH() { gen.dumpBuffer(); throw std::runtime_error("[Unimplem
 
 
 void DynaRecCPU::recSLL() {
+    printf("recSLL\n");
     BAILZERO(_Rd_);
     maybeCancelDelayedLoad(_Rd_);
 
@@ -570,13 +588,17 @@ void DynaRecCPU::recSRL() { gen.dumpBuffer(); throw std::runtime_error("[Unimple
 void DynaRecCPU::recSRLV() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SRLV instruction"); }
 
 
-void DynaRecCPU::recSUB() { recSUBU(); }
+void DynaRecCPU::recSUB() {
+    printf("recSUB\n");
+    recSUBU();
+}
 
 
-void DynaRecCPU::recSUBU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SUBU instruction"); }
+void DynaRecCPU::recSUBU() { printf("recSUBU\n"); gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SUBU instruction"); }
 
 
 void DynaRecCPU::recSW() {
+    printf("recSW\n");
     if (m_regs[_Rs_].isConst()) {
         const uint32_t addr = m_regs[_Rs_].val + _Imm_;
         const auto pointer = PCSX::g_emulator->m_psxMem->psxMemPointerWrite(addr);
@@ -591,7 +613,6 @@ void DynaRecCPU::recSW() {
 
             return;
         }
-
         if (m_regs[_Rt_].isConst()) {  // Value to write in arg2
             gen.Mov(arg2, m_regs[_Rt_].val);
         } else {
@@ -613,7 +634,6 @@ void DynaRecCPU::recSW() {
 
         allocateReg(_Rs_);
         gen.Add(arg1, m_regs[_Rs_].allocatedReg, _Imm_);  // Address to write to in arg1   TODO: Optimize
-
         call(psxMemWrite32Wrapper);
     }
 }
@@ -624,10 +644,14 @@ void DynaRecCPU::recSWL() { gen.dumpBuffer(); throw std::runtime_error("[Unimple
 void DynaRecCPU::recSWR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SWR instruction"); }
 
 
-void DynaRecCPU::recSYSCALL() { recException(Exception::Syscall); }
+void DynaRecCPU::recSYSCALL() {
+    printf("recSYSCALL\n");
+    recException(Exception::Syscall);
+}
 
 
 void DynaRecCPU::recXOR() {
+    printf("recXOR\n");
     BAILZERO(_Rd_);
     maybeCancelDelayedLoad(_Rd_);
 
@@ -647,6 +671,7 @@ void DynaRecCPU::recXOR() {
 
 
 void DynaRecCPU::recXORI() {
+    printf("recXORI\n");
     BAILZERO(_Rt_);
     maybeCancelDelayedLoad(_Rt_);
 
@@ -673,6 +698,7 @@ void DynaRecCPU::recXORI() {
 
 
 void DynaRecCPU::recException(Exception e) {
+    printf("recException\n");
     m_pcWrittenBack = true;
     m_stopCompiling = true;
 
@@ -689,24 +715,25 @@ void DynaRecCPU::recException(Exception e) {
 // loadSR: Shows if SR is already in eax or if it should be loaded from memory
 template <bool loadSR>
 void DynaRecCPU::testSoftwareInterrupt() {
-    PCSX::g_system->message("TestSoftwareInterrupt\n");
+    printf("TestSoftwareInterrupt\n");
     vixl::aarch64::Label label;
     if (!m_pcWrittenBack) {
-        gen.Mov(w4, m_pc);
-        gen.Str(w4, MemOperand(contextPointer, PC_OFFSET));
+        gen.Mov(scratch, m_pc);
+        gen.Str(scratch, MemOperand(contextPointer, PC_OFFSET));
         m_pcWrittenBack = true;
     }
 
     m_stopCompiling = true;
 
     if constexpr (loadSR) {
-        gen.Ldr(w0, MemOperand(contextPointer, COP0_OFFSET(12))); // w0 = SR
+        gen.Ldr(scratch, MemOperand(contextPointer, COP0_OFFSET(12))); // w0 = SR
     }
-    gen.Cbz(w0, &label); // Check if interrupts are enabled // If not, skip to the end
+    gen.Cmp(scratch, 1); // Check if interrupts are enabled // If not, skip to the end
+    gen.bz(label);
     gen.Ldr(arg2, MemOperand(contextPointer, COP0_OFFSET(13))); // arg2 = CAUSE
-    gen.And(w0, w0, arg2);
-    gen.Tst(w0, 0x300);                             // Check if an interrupt was force-fired // Skip to the end if not
-    gen.B(eq, &label);
+    gen.And(scratch, scratch, arg2);
+    gen.Cmp(scratch, 0x300);                             // Check if an interrupt was force-fired // Skip to the end if not
+    gen.bz(label);
 
     // Fire the interrupt if it was triggered
     // This object in arg1. Exception code is already in arg2 from before (will be masked by exception handler)
@@ -717,7 +744,6 @@ void DynaRecCPU::testSoftwareInterrupt() {
     call(psxExceptionWrapper);                             // Call the exception wrapper function
 
     gen.L(label);
-    gen.dumpBuffer();
 }
 
 #undef BAILZERO

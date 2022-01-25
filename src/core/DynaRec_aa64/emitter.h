@@ -117,6 +117,19 @@ public:
             Cmp(dest, value);
         }
     }
+
+    // Logical or dest by value (Skip the or if value == 0)
+    void orImm(vixl::aarch64::Register dest, uint32_t value) {
+        if (value != 0) {
+            Orr(dest, dest, value);
+        }
+    }
+
+    void orImm(vixl::aarch64::Register dest, vixl::aarch64::Register source, uint32_t value) {
+        if (value != 0) {
+            Orr(dest, source, value);
+        }
+    }
 };
 
 #endif // DYNAREC_AA64
