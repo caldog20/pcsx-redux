@@ -728,11 +728,11 @@ void DynaRecCPU::testSoftwareInterrupt() {
     if constexpr (loadSR) {
         gen.Ldr(scratch, MemOperand(contextPointer, COP0_OFFSET(12))); // w0 = SR
     }
-    gen.Cmp(scratch, 1); // Check if interrupts are enabled // If not, skip to the end
+    gen.Tst(scratch, 1); // Check if interrupts are enabled // If not, skip to the end
     gen.bz(label);
     gen.Ldr(arg2, MemOperand(contextPointer, COP0_OFFSET(13))); // arg2 = CAUSE
     gen.And(scratch, scratch, arg2);
-    gen.Cmp(scratch, 0x300);                             // Check if an interrupt was force-fired // Skip to the end if not
+    gen.Tst(scratch, 0x300);                             // Check if an interrupt was force-fired // Skip to the end if not
     gen.bz(label);
 
     // Fire the interrupt if it was triggered
