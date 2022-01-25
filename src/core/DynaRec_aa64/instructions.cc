@@ -36,7 +36,6 @@ void DynaRecCPU::recSpecial() {
 // The Dynarec doesn't currently handle overflow exceptions, so we treat ADD the same as ADDU
 void DynaRecCPU::recADD() { recADDU(); }
 
-
 void DynaRecCPU::recADDIU() {
     printf("recADDIU\n");
     BAILZERO(_Rt_);
@@ -60,7 +59,6 @@ void DynaRecCPU::recADDIU() {
         }
     }
 }
-
 
 void DynaRecCPU::recADDU() {
     printf("recADDU\n");
@@ -98,7 +96,6 @@ void DynaRecCPU::recADDU() {
     }
 }
 
-
 void DynaRecCPU::recAND() {
     printf("recAND\n");
     BAILZERO(_Rd_);
@@ -127,7 +124,6 @@ void DynaRecCPU::recAND() {
     }
 }
 
-
 void DynaRecCPU::recANDI() {
     printf("recANDI\n");
     BAILZERO(_Rt_);
@@ -150,7 +146,6 @@ void DynaRecCPU::recANDI() {
         }
     }
 }
-
 
 void DynaRecCPU::recBEQ() {
     printf("recBEQ\n");
@@ -190,7 +185,6 @@ void DynaRecCPU::recBEQ() {
     gen.Str(w5, MemOperand(contextPointer, PC_OFFSET));
 }
 
-
 void DynaRecCPU::recBGTZ() {
     printf("recBGTZ\n");
     uint32_t target = _Imm_ * 4 + m_pc;
@@ -227,7 +221,6 @@ void DynaRecCPU::recBGTZ() {
     gen.Str(w5, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
 
 }
-
 
 void DynaRecCPU::recBLEZ() {
     printf("recBLEZ\n");
@@ -267,7 +260,6 @@ void DynaRecCPU::recBLEZ() {
 
 }
 
-
 void DynaRecCPU::recBNE() {
     printf("recBNE\n");
     const auto target = _Imm_ * 4 + m_pc;
@@ -306,13 +298,11 @@ void DynaRecCPU::recBNE() {
     gen.Str(w5, MemOperand(contextPointer, PC_OFFSET)); // store w0 jump addr to m_pc
 }
 
-
 void DynaRecCPU::recBREAK() {
     printf("recBREAK\n");
     flushRegs();  // For PCDRV support, we need to flush all registers before handling the exception.
     recException(Exception::Break);
 }
-
 
 void DynaRecCPU::recCOP0() {
     printf("recCOP0\n");
@@ -333,10 +323,8 @@ void DynaRecCPU::recCOP0() {
     }
 }
 
-
 void DynaRecCPU::recDIV() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] DIV instruction"); }
 void DynaRecCPU::recDIVU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] DIVU instruction"); }
-
 
 void DynaRecCPU::recJ() {
     printf("recJ\n");
@@ -350,14 +338,12 @@ void DynaRecCPU::recJ() {
     gen.dumpBuffer();
 }
 
-
 void DynaRecCPU::recJAL() {
     printf("recJAL\n");
     maybeCancelDelayedLoad(31);
     markConst(31, m_pc + 4);  // Set $ra to the return value, then treat instruction like a normal J
     recJ();
 }
-
 
 void DynaRecCPU::recJALR() {
     printf("recJALR\n");
@@ -386,7 +372,6 @@ void DynaRecCPU::recJR() {
     }
 }
 
-
 void DynaRecCPU::recLB() { recompileLoad<8, true>(); }
 void DynaRecCPU::recLBU() { recompileLoad<8, false>(); }
 void DynaRecCPU::recLH() { recompileLoad<16, true>(); }
@@ -400,7 +385,6 @@ void DynaRecCPU::recLUI() {
     maybeCancelDelayedLoad(_Rt_);
     markConst(_Rt_, m_psxRegs.code << 16);
 }
-
 
 template <int size, bool signExtend>
 void DynaRecCPU::recompileLoad() {
@@ -455,11 +439,9 @@ void DynaRecCPU::recompileLoad() {
     }
 }
 
-
 //void DynaRecCPU::recLWC2() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LWC2 instruction"); }
 void DynaRecCPU::recLWL() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LWL instruction"); }
 void DynaRecCPU::recLWR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] LWR instruction"); }
-
 
 void DynaRecCPU::recMFC0() {
     printf("recMFC0\n");
@@ -469,7 +451,6 @@ void DynaRecCPU::recMFC0() {
     m_regs[_Rt_].setWriteback(true);
     gen.Ldr(m_regs[_Rt_].allocatedReg, MemOperand(contextPointer, COP0_OFFSET(_Rd_)));
 }
-
 
 //void DynaRecCPU::recMFC2() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MFC2 instruction"); }
 void DynaRecCPU::recMFHI() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MFHI instruction"); }
@@ -510,7 +491,6 @@ void DynaRecCPU::recMULT() { gen.dumpBuffer(); throw std::runtime_error("[Unimpl
 void DynaRecCPU::recMULTU() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] MULTU instruction"); }
 void DynaRecCPU::recNOR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] NOR instruction"); }
 
-
 void DynaRecCPU::recOR() {
     printf("recOR\n");
     BAILZERO(_Rd_);
@@ -531,7 +511,6 @@ void DynaRecCPU::recOR() {
         gen.Orr(m_regs[_Rd_].allocatedReg, m_regs[_Rs_].allocatedReg, m_regs[_Rt_].allocatedReg);
     }
 }
-
 
 void DynaRecCPU::recORI() {
     printf("recORI\n");
@@ -556,12 +535,10 @@ void DynaRecCPU::recORI() {
     }
 }
 
-
 void DynaRecCPU::recREGIMM() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] REGIMM instruction"); }
 void DynaRecCPU::recRFE() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] RFE instruction"); }
 void DynaRecCPU::recSB() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SB instruction"); }
 void DynaRecCPU::recSH() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SH instruction"); }
-
 
 void DynaRecCPU::recSLL() {
     printf("recSLL\n");
@@ -576,7 +553,6 @@ void DynaRecCPU::recSLL() {
     }
 }
 
-
 void DynaRecCPU::recSLLV() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SLLV instruction"); }
 void DynaRecCPU::recSLT() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SLT instruction"); }
 void DynaRecCPU::recSLTI() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SLTI instruction"); }
@@ -587,15 +563,12 @@ void DynaRecCPU::recSRAV() { gen.dumpBuffer(); throw std::runtime_error("[Unimpl
 void DynaRecCPU::recSRL() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SRL instruction"); }
 void DynaRecCPU::recSRLV() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SRLV instruction"); }
 
-
 void DynaRecCPU::recSUB() {
     printf("recSUB\n");
     recSUBU();
 }
 
-
 void DynaRecCPU::recSUBU() { printf("recSUBU\n"); gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SUBU instruction"); }
-
 
 void DynaRecCPU::recSW() {
     printf("recSW\n");
@@ -638,7 +611,6 @@ void DynaRecCPU::recSW() {
     }
 }
 
-
 //void DynaRecCPU::recSWC2() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SWC2 instruction"); }
 void DynaRecCPU::recSWL() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SWL instruction"); }
 void DynaRecCPU::recSWR() { gen.dumpBuffer(); throw std::runtime_error("[Unimplemented] SWR instruction"); }
@@ -648,7 +620,6 @@ void DynaRecCPU::recSYSCALL() {
     printf("recSYSCALL\n");
     recException(Exception::Syscall);
 }
-
 
 void DynaRecCPU::recXOR() {
     printf("recXOR\n");
@@ -668,7 +639,6 @@ void DynaRecCPU::recXOR() {
         gen.Eor(m_regs[_Rd_].allocatedReg, m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg);
     }
 }
-
 
 void DynaRecCPU::recXORI() {
     printf("recXORI\n");
