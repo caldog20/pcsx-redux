@@ -109,15 +109,6 @@ public:
         }
     }
 
-    // Returns whether dest is equal to value via the zero flag
-    void cmpEqImm(vixl::aarch64::Register dest, uint32_t value) {
-        if (value == 0) {
-            Tst(dest, dest);
-        } else {
-            Cmp(dest, value);
-        }
-    }
-
     // Logical or dest by value (Skip the or if value == 0)
     void orImm(vixl::aarch64::Register dest, uint32_t value) {
         if (value != 0) {
