@@ -33,6 +33,8 @@ constexpr size_t allocSize = codeCacheSize + 0x1000;
 alignas(4096) static uint8_t s_codeCache[allocSize];
 
 class Emitter : public MacroAssembler {
+    using Register = vixl::aarch64::Register;
+
 public:
     Emitter() : MacroAssembler(s_codeCache, allocSize) {}
 
@@ -100,8 +102,7 @@ public:
 
     // Adds "value" to "source" and stores the result in dest
     // Uses add if the value is non-zero, or mov otherwise
-    // TODO: Possibly use WRegister here for safety
-    void moveAndAdd(vixl::aarch64::Register dest, vixl::aarch64::Register source, uint32_t value) {
+    void moveAndAdd(Register dest, Register source, uint32_t value) {
         if (value != 0) {
             Add(dest, source, value);
         } else {
@@ -110,15 +111,17 @@ public:
     }
 
     // Logical or dest by value (Skip the or if value == 0)
-    void orImm(vixl::aarch64::Register dest, uint32_t value) {
+    void orImm(Register dest, uint32_t value) {
         if (value != 0) {
             Orr(dest, dest, value);
         }
     }
 
-    void orImm(vixl::aarch64::Register dest, vixl::aarch64::Register source, uint32_t value) {
+    void orImm(Register dest, Register source, uint32_t value) {
         if (value != 0) {
             Orr(dest, source, value);
+        } else if (!dest.Is(source)) {
+            Mov(dest, source);
         }
     }
 
