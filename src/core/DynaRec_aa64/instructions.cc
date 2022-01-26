@@ -586,6 +586,7 @@ void DynaRecCPU::recSW() {
 
             return;
         }
+//        if (addr == 0) gen.breakpoint();
         if (m_regs[_Rt_].isConst()) {  // Value to write in arg2
             gen.Mov(arg2, m_regs[_Rt_].val);
         } else {
