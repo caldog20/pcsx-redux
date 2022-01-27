@@ -659,7 +659,7 @@ void DynaRecCPU::recXORI() {
             markConst(_Rt_, m_regs[_Rs_].val ^ _ImmU_);
         } else {
             alloc_rs_wb_rt();
-            gen.Eor(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg, _Immu_);
+            gen.Eor(m_regs[_Rt_].allocatedReg, m_regs[_Rs_].allocatedReg, _ImmU_);
         }
     }
 }
