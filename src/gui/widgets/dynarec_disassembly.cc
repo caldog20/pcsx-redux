@@ -37,7 +37,7 @@ void PCSX::Widgets::Disassembly::writeFile() {
             file << m_items[i];
         }
     } else {
-        PCSX::g_system->printf("Disassembler Error: failed to open output file for disassembly.\n");
+        g_system->printf("Disassembler Error: failed to open output file for disassembly.\n");
         m_showError = true;
         return;
     }
@@ -45,7 +45,7 @@ void PCSX::Widgets::Disassembly::writeFile() {
     file.close();
     // If bad bit is set, there was an error, return -1
     if (file.fail()) {
-        PCSX::g_system->printf("Disassembler Error: failed to write disassembly to output file.\n");
+        g_system->printf("Disassembler Error: failed to write disassembly to output file.\n");
         m_showError = true;
     }
 }
@@ -157,21 +157,21 @@ size_t PCSX::Widgets::Disassembly::disassembleBuffer() {
     size_t count;
 
     // Get pointer to code buffer along with size of buffer
-    const uint8_t* buffer = PCSX::g_emulator->m_psxCpu->getBufferPtr();
-    const size_t bufferSize = PCSX::g_emulator->m_psxCpu->getBufferSize();
+    const uint8_t* buffer = g_emulator->m_psxCpu->getBufferPtr();
+    const size_t bufferSize = g_emulator->m_psxCpu->getBufferSize();
     // Check to ensure code buffer pointer is not null and size is not 0
     if (buffer == nullptr) {
-        PCSX::g_system->printf("Disassembler Error: nullpointer to code buffer.\n");
+        g_system->printf("Disassembler Error: nullpointer to code buffer.\n");
         m_showError = true;
         return 0;
     } else if (bufferSize <= 0) {
-        PCSX::g_system->printf("Disassembler Error: Invalid code buffer size.\n");
+        g_system->printf("Disassembler Error: Invalid code buffer size.\n");
         m_showError = true;
         return 0;
     }
     // Attempt to initialize Capstone disassembler, if error log it and return
     if (cs_open(CS_ARCH, CS_MODE, &handle) != CS_ERR_OK) {
-        PCSX::g_system->printf("Disassembler Error: Failed to initialize Capstone.\n");
+        g_system->printf("Disassembler Error: Failed to initialize Capstone.\n");
         m_showError = true;
         return 0;
     }
@@ -194,7 +194,7 @@ size_t PCSX::Widgets::Disassembly::disassembleBuffer() {
         // If disassembly failed, log the error and close out disassembler
     } else {
         cs_close(&handle);
-        PCSX::g_system->printf("Disassembler Error: Failed to disassemble buffer.\n");
+        g_system->printf("Disassembler Error: Failed to disassemble buffer.\n");
         m_showError = true;
         return 0;
     }
