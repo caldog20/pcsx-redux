@@ -58,6 +58,18 @@ class Disassembly {
     bool m_outputFile = false;
     size_t m_codeSize = 0;
 
+    inline void errorPopup(const std::string &message) {
+        ImGui::OpenPopup("Disassembler Error");
+        if (ImGui::BeginPopupModal("Disassembler Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted(message.c_str());
+            if (ImGui::Button("Close")) {
+                ImGui::CloseCurrentPopup();
+                m_showError = false;
+            }
+        }
+        ImGui::EndPopup();
+    }
+
     // Class Methods
     size_t disassembleBuffer();
     void addInstruction(const std::string& str) {
