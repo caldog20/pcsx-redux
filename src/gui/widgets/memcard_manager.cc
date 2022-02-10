@@ -24,7 +24,7 @@
 
 #include "core/system.h"
 #include "fmt/format.h"
-
+// TODO: Clean this up to avoid definition conflicts due to stb requirements
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
 
