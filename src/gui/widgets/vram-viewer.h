@@ -57,6 +57,23 @@ class VRAMViewer {
     }
     void imguiCB(const ImDrawList *parentList, const ImDrawCmd *cmd);
 
+    // PNG Export stuff
+    void exportPNG(GLuint texture);
+    bool m_showError = false;
+    bool m_exportPNG = false;
+    static inline int pngCount = 0;
+    inline void errorPopup(const std::string &message) {
+        ImGui::OpenPopup("Error");
+        if (ImGui::BeginPopupModal("Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted(message.c_str());
+            if (ImGui::Button("Close")) {
+                ImGui::CloseCurrentPopup();
+                m_showError = false;
+            }
+        }
+        ImGui::EndPopup();
+    }
+
     bool m_isMain = false;
 
     GLuint m_shaderProgram = 0;

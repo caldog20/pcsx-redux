@@ -31,6 +31,7 @@
 #include "gui/widgets/vram-viewer.h"
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "stb/stb_image_write.h"
 
 static const GLchar *s_defaultVertexShader = GL_SHADER_VERSION R"(
 precision highp float;
@@ -362,6 +363,12 @@ void PCSX::Widgets::VRAMViewer::draw(GUI *gui, unsigned int VRAMTexture) {
             }
             if (ImGui::BeginMenuBar()) {
                 if (ImGui::BeginMenu(_("File"))) {
+                    if (ImGui::MenuItem(_("Export PNG Image"), nullptr, m_exportPNG)) {
+                        exportPNG(VRAMTexture);
+                    }
+                    if (ImGui::MenuItem(_("Close"))) {
+                        m_show = false;
+                    }
                     ImGui::EndMenu();
                 }
                 if (ImGui::BeginMenu(_("View"))) {
@@ -398,6 +405,10 @@ void PCSX::Widgets::VRAMViewer::draw(GUI *gui, unsigned int VRAMTexture) {
                 }
                 ImGui::EndMenuBar();
             }
+            // If true, throw error popup for png export error
+            if (m_showError) {
+                errorPopup("Error exporting PNG image. Check logs for more information.");
+            }
             drawVRAM(gui, VRAMTexture);
         }
         ImGui::End();
@@ -417,4 +428,30 @@ void PCSX::Widgets::VRAMViewer::modeChanged() {
     float deltaX = newX - dimensions.x;
     m_cornerTL.x = m_cornerTL.x - deltaX * focusX;
     m_cornerBR.x = m_cornerTL.x + newX;
+}
+
+void PCSX::Widgets::VRAMViewer::exportPNG(GLuint texture) {
+    const auto filename = fmt::format("vram_export-{}.png", pngCount);
+    const auto width = 1024;
+    const auto height = 512;
+    const auto comp = 3;
+    GLubyte *pixels = new GLubyte[width * height * comp];
+    GLuint temp_fb;
+    // Set up temporary GL framebuffer to read texture into pixels[]
+    glGenFramebuffers(1, &temp_fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, temp_fb);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &temp_fb);
+    // Attempt to write pixels out to a PNG image - result of 1 is successful, result of 0 is failure
+    bool sucessfulExport = stbi_write_png(filename.c_str(), width, height, comp, pixels, width * comp);
+    // If result is bad, signal to throw the error popup then write to log
+    if (!sucessfulExport) {
+        m_showError = true;
+        g_system->printf("VRAM export to PNG failed.\n");
+    } else {
+        g_system->printf("VRAM exported as %s\n", filename);
+        pngCount += 1;
+    }
 }
