@@ -483,6 +483,29 @@ bool PCSX::Pads::Pad::configure() {
                 ImGui::PopStyleColor(2);
             }
         }
+        for (auto i = 0; i < 4; i++) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text(c_dpadDirections[i]());
+            ImGui::TableSetColumnIndex(0);
+            bool hasToPop = false;
+            const auto absI = i + 10;
+            if (m_buttonToWait == absI) {
+                const ImVec4 highlight = ImGui::GetStyle().Colors[ImGuiCol_TextDisabled];
+                ImGui::PushStyleColor(ImGuiCol_Button, highlight);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, highlight);
+                hasToPop = true;
+            }
+
+            // The name of the mapped key
+            const auto keyName = fmt::format("{}##{}", glfwKeyToString(getButtonFromGUIIndex(absI)), absI);
+            if (ImGui::Button(keyName.c_str(), ImVec2{-1, 0})) {
+                m_buttonToWait = absI;
+            }
+            if (hasToPop) {
+                ImGui::PopStyleColor(2);
+            }
+        }
         ImGui::EndTable();
     }
 
@@ -505,7 +528,8 @@ bool PCSX::Pads::Pad::configure() {
 
     if (ImGui::BeginCombo(_("Gamepad"), preview)) {
         for (int i = 0; i < gamepadsNames.size(); i++) {
-            if (ImGui::Selectable(gamepadsNames[i])) {
+            const auto gamepadName = fmt::format("{}##{}", gamepadsNames[i], i);
+            if (ImGui::Selectable(gamepadName.c_str())) {
                 changed = true;
                 id = i;
             }

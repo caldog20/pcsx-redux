@@ -71,7 +71,7 @@ ifeq ($(UNAME_S),Darwin)
     LDFLAGS += -mmacosx-version-min=10.15
 else
     LDFLAGS += -lstdc++fs
-    LDFLAGS += -lGL -lX11
+    LDFLAGS += -lGL -lX11 -lxcb
 endif
 
 LDFLAGS += third_party/luajit/src/libluajit.a
@@ -92,6 +92,8 @@ IMGUI_SRCS += $(wildcard third_party/imgui/*.cpp)
 VIXL_SRCS := $(call rwildcard, third_party/vixl/src,*.cc)
 SRCS += $(IMGUI_SRCS)
 SRCS += $(wildcard third_party/libelfin/*.cc)
+SRCS += third_party/clip/clip.cpp
+SRCS += third_party/clip/image.cpp
 SRCS += third_party/gl3w/GL/gl3w.c
 SRCS += third_party/imgui/backends/imgui_impl_opengl3.cpp
 SRCS += third_party/imgui/backends/imgui_impl_glfw.cpp
@@ -107,7 +109,9 @@ SRCS += third_party/zep/src/mcommon/animation/timer.cpp
 SRCS += third_party/zep/src/mcommon/file/path.cpp
 SRCS += third_party/zep/src/mcommon/string/stringutils.cpp
 ifeq ($(UNAME_S),Darwin)
-    SRCS += src/main/complain.mm
+    SRCS += src/main/complain.mm third_party/clip/clip_osx.mm
+else
+    SRCS += third_party/clip/clip_x11.cpp
 endif
 ifeq ($(UNAME_M),aarch64)
     SRCS += $(VIXL_SRCS)
