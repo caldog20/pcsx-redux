@@ -95,6 +95,7 @@ class System;
 class WebServer;
 class SIO1;
 class SIO1Server;
+class SSDPClient;
 
 class Emulator;
 extern Emulator* g_emulator;
@@ -149,11 +150,12 @@ class Emulator {
         typedef SettingPath<TYPESTRING("PCdrvBase")> PCdrvBase;
         typedef Setting<bool, TYPESTRING("SIO1Server"), false> SIO1Server;
         typedef Setting<int, TYPESTRING("SIO1ServerPort"), 6699> SIO1ServerPort;
+        typedef Setting<bool, TYPESTRING("SSDPClient"), false> SSDPClient;
         typedef Settings<Debug, Trace, KernelLog, FirstChanceException, SkipISR, LoggingCDROM, GdbServer, GdbManifest,
                          GdbLogSetting, GdbServerPort, GdbServerTrace, WebServer, WebServerPort, KernelCallA0_00_1f,
                          KernelCallA0_20_3f, KernelCallA0_40_5f, KernelCallA0_60_7f, KernelCallA0_80_9f,
                          KernelCallA0_a0_bf, KernelCallB0_00_1f, KernelCallB0_20_3f, KernelCallB0_40_5f,
-                         KernelCallC0_00_1f, PCdrv, PCdrvBase, SIO1Server, SIO1ServerPort>
+                         KernelCallC0_00_1f, PCdrv, PCdrvBase, SIO1Server, SIO1ServerPort, SSDPClient>
             type;
     };
     typedef SettingNested<TYPESTRING("Debug"), DebugSettings::type> SettingDebugSettings;
@@ -250,6 +252,7 @@ class Emulator {
     std::unique_ptr<SIO1Server> m_sio1Server;
     std::unique_ptr<SPUInterface> m_spu;
     std::unique_ptr<WebServer> m_webServer;
+    std::unique_ptr<SSDPClient> m_ssdpClient;
 
     uv_loop_t m_loop;
 

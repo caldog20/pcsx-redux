@@ -44,6 +44,7 @@
 #include "core/sstate.h"
 #include "core/sio1-server.h"
 #include "core/web-server.h"
+#include "core/ssdp_discovery.h"
 #include "flags.h"
 #include "gpu/soft/externals.h"
 #include "gui/resources.h"
@@ -1401,6 +1402,17 @@ relay information between tcp and sio1.
 See the wiki for details.)"));
         changed |=
             ImGui::InputInt(_("SIO1 Server Port"), &debugSettings.get<Emulator::DebugSettings::SIO1ServerPort>().value);
+        if (ImGui::Checkbox(_("Enable SSDP Client"), &debugSettings.get<Emulator::DebugSettings::SSDPClient>().value)) {
+            changed = true;
+            if (debugSettings.get<Emulator::DebugSettings::SSDPClient>()) {
+                g_emulator->m_ssdpClient->start(&g_emulator->m_loop);
+            } else {
+                g_emulator->m_ssdpClient->stop();
+            }
+        }
+        if (ImGui::Button(_("Search"))) {
+            g_emulator->m_ssdpClient->search();
+        }
         if (ImGui::CollapsingHeader(_("Advanced BIOS patching"))) {
             auto& overlays = settings.get<Emulator::SettingBiosOverlay>();
             if (ImGui::Button(_("Add one entry"))) overlays.push_back({});

@@ -34,6 +34,7 @@
 #include "core/sio1.h"
 #include "core/sio1-server.h"
 #include "core/web-server.h"
+#include "core/ssdp_discovery.h"
 #include "gpu/soft/interface.h"
 #include "lua/luawrapper.h"
 #include "lua/zlibffi.h"
@@ -55,6 +56,7 @@ PCSX::Emulator::Emulator()
       m_webServer(new PCSX::WebServer()),
       m_sio1(new PCSX::SIO1()),
       m_sio1Server(new PCSX::SIO1Server()),
+      m_ssdpClient(new PCSX::SSDPClient()),
       m_debug(new PCSX::Debug()),
       m_hw(new PCSX::HW()),
       m_spu(new PCSX::SPU::impl()),
