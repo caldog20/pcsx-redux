@@ -29,6 +29,7 @@
 #include "core/sio1-server.h"
 #include "core/sstate.h"
 #include "support/file.h"
+#include "support/protobuf.h"
 
 //#define SIO1_CYCLES (m_regs.baud * 8)
 #define SIO1_CYCLES (1)
@@ -42,6 +43,16 @@ struct SIO1Registers {
     uint16_t control;
     uint16_t baud;
 };
+
+typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("dxr"), 1> FlowControlDXR;
+typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("xts"), 2> FlowControlXTS;
+typedef Protobuf::Message<TYPESTRING("FlowControl"), FlowControlDXR, FlowControlXTS> FlowControl;
+typedef Protobuf::MessageField<FlowControl, TYPESTRING("flow_control"), 2> FlowControlField;
+typedef Protobuf::Field<Protobuf::Bytes, TYPESTRING("data"), 1> DataTransferData;
+typedef Protobuf::Message<TYPESTRING("DataTransfer"), DataTransferData> DataTransfer;
+typedef Protobuf::MessageField<DataTransfer, TYPESTRING("data_transfer"), 1> DataTransferField;
+typedef Protobuf::Message<TYPESTRING("SIOPayload"), DataTransferField, FlowControlField> SIOPayload;
+
 
 class SIO1 {
     /*
@@ -67,9 +78,26 @@ class SIO1 {
         m_regs.mode = 0;
         m_regs.control = 0;
         m_regs.baud = 0;
-
+        checkSize = true;
         g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
+    void resetFifo() {
+        m_pbfifo.reset();
+        m_txfifo.reset();
+        m_fifo.reset();
+        checkSize = true;
+    }
+    void decodeMessage();
+    void encodeDataMessage(bool withData = true);
+    bool receiveMessage();
+    bool tryDecodeMessage();
+    void encodeMessage();
+    void queueTransmit();
+    bool checkSize = true;
+    uint8_t messageSize = 0;
+    SIOPayload makePayload(std::string data);
+    SIOPayload makePayload(uint8_t data);
+
 
     uint8_t readBaud8() { return m_regs.baud; }
     uint16_t readBaud16() { return m_regs.baud; }
@@ -115,7 +143,8 @@ class SIO1 {
 
     void receiveCallback();
 
-    void pushSlice(Slice&& slice) { m_fifo.pushSlice(std::move(slice)); }
+    void pushSlice(Slice&& slice) { m_pbfifo.pushSlice(std::move(slice)); }
+    void pushDataSlice(Slice&& slice) { m_fifo.pushSlice(std::move(slice)); }
 
     SIO1Registers m_regs;
 
@@ -155,6 +184,10 @@ class SIO1 {
         IRQ8_SIO = 0x100
     };
 
+    enum {
+        READ_LENGTH = 1,
+        READ_MESSAGE = 2,
+    };
     inline void scheduleInterrupt(uint32_t eCycle) { g_emulator->m_cpu->scheduleInterrupt(PSXINT_SIO1, eCycle); }
 
     void updateStat();
@@ -162,5 +195,7 @@ class SIO1 {
     bool isTransmitReady();
 
     Fifo m_fifo;
+    Fifo m_pbfifo;
+    Fifo m_txfifo;
 };
 }  // namespace PCSX

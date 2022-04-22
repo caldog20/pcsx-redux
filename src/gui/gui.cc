@@ -1476,6 +1476,12 @@ relay information between tcp and sio1.
 See the wiki for details.)"));
         changed |=
             ImGui::InputInt(_("SIO1 Server Port"), &debugSettings.get<Emulator::DebugSettings::SIO1ServerPort>().value);
+        if (ImGui::Button(_("Reset SIO"))) {
+            g_emulator->m_sio1->reset();
+        }
+        if (ImGui::Button(_("Reset Fifo"))) {
+            g_emulator->m_sio1->resetFifo();
+        }
         if (ImGui::CollapsingHeader(_("Advanced BIOS patching"))) {
             auto& overlays = settings.get<Emulator::SettingBiosOverlay>();
             if (ImGui::Button(_("Add one entry"))) overlays.push_back({});
