@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2007 Ryan Schultz, PCSX-df Team, PCSX team              *
+ *   Copyright (C) 2022 PCSX-Redux authors                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -35,7 +35,6 @@
 #include <string.h>
 #include <sys/types.h>
 #include <time.h>
-#include <uv.h>
 #include <zlib.h>
 
 #include <filesystem>
@@ -62,8 +61,8 @@
 
 // Local includes from core - anything else from core is forbidden
 #include "core/logger.h"
-#include "core/misc.h"
 #include "core/system.h"
+#include "support/strings-helpers.h"
 
 #if defined(__linux__) || defined(__MACOSX__)
 #define strnicmp strncasecmp
@@ -107,8 +106,8 @@ class Emulator {
     Emulator(Emulator&&) = delete;
     Emulator(const Emulator&) = delete;
     Emulator& operator=(const Emulator&) = delete;
-    enum VideoType { PSX_TYPE_NTSC = 0, PSX_TYPE_PAL };                     // PSX Types
-    enum CDDAType { CDDA_DISABLED = 0, CDDA_ENABLED_LE, CDDA_ENABLED_BE };  // CDDA Types
+    enum VideoType { PSX_TYPE_NTSC = 0, PSX_TYPE_PAL };    // PSX Types
+    enum CDDAType { CDDA_DISABLED = 0, CDDA_ENABLED_LE };  // CDDA Types
     struct OverlaySetting {
         typedef SettingPath<TYPESTRING("Filename")> Filename;
         typedef Setting<uint32_t, TYPESTRING("FileOffset")> FileOffset;
@@ -173,7 +172,6 @@ class Emulator {
     typedef Setting<int, TYPESTRING("Scaler"), 100> SettingScaler;
     typedef Setting<bool, TYPESTRING("AutoVideo"), true> SettingAutoVideo;
     typedef Setting<VideoType, TYPESTRING("Video"), PSX_TYPE_NTSC> SettingVideo;
-    typedef Setting<CDDAType, TYPESTRING("CDDA"), CDDA_ENABLED_LE> SettingCDDA;
     typedef Setting<bool, TYPESTRING("FastBoot"), false> SettingFastBoot;
     typedef Setting<bool, TYPESTRING("RCntFix")> SettingRCntFix;
     typedef SettingPath<TYPESTRING("IsoPath")> SettingIsoPath;
@@ -186,12 +184,14 @@ class Emulator {
     typedef Setting<int, TYPESTRING("Dither"), 2> SettingDither;
     typedef Setting<bool, TYPESTRING("ReportGLErrors"), false> SettingGLErrorReporting;
     typedef Setting<bool, TYPESTRING("FullCaching"), false> SettingFullCaching;
+    typedef Setting<bool, TYPESTRING("ShownAutoUpdateConfig"), false> SettingShownAutoUpdateConfig;
+    typedef Setting<bool, TYPESTRING("AutoUpdate"), false> SettingAutoUpdate;
 
     Settings<SettingStdout, SettingLogfile, SettingMcd1, SettingMcd2, SettingBios, SettingPpfDir, SettingPsxExe,
-             SettingXa, SettingSpuIrq, SettingBnWMdec, SettingScaler, SettingAutoVideo, SettingVideo, SettingCDDA,
-             SettingFastBoot, SettingDebugSettings, SettingRCntFix, SettingIsoPath, SettingLocale, SettingMcd1Inserted,
+             SettingXa, SettingSpuIrq, SettingBnWMdec, SettingScaler, SettingAutoVideo, SettingVideo, SettingFastBoot,
+             SettingDebugSettings, SettingRCntFix, SettingIsoPath, SettingLocale, SettingMcd1Inserted,
              SettingMcd2Inserted, SettingBiosOverlay, SettingDynarec, Setting8MB, SettingGUITheme, SettingDither,
-             SettingGLErrorReporting, SettingFullCaching>
+             SettingGLErrorReporting, SettingFullCaching, SettingShownAutoUpdateConfig, SettingAutoUpdate>
         settings;
     class PcsxConfig {
       public:
@@ -239,7 +239,7 @@ class Emulator {
     std::unique_ptr<CallStacks> m_callStacks;
     std::unique_ptr<CDRom> m_cdrom;
     std::unique_ptr<Cheats> m_cheats;
-    std::unique_ptr<Counters> m_psxCounters;
+    std::unique_ptr<Counters> m_counters;
     std::unique_ptr<Debug> m_debug;
     std::unique_ptr<GdbServer> m_gdbServer;
     std::unique_ptr<GPU> m_gpu;
@@ -247,20 +247,15 @@ class Emulator {
     std::unique_ptr<HW> m_hw;
     std::unique_ptr<Lua> m_lua;
     std::unique_ptr<MDEC> m_mdec;
-    std::unique_ptr<Memory> m_psxMem;
+    std::unique_ptr<Memory> m_mem;
     std::unique_ptr<Pads> m_pads;
-    std::unique_ptr<R3000Acpu> m_psxCpu;
+    std::unique_ptr<R3000Acpu> m_cpu;
     std::unique_ptr<SIO> m_sio;
     std::unique_ptr<SIO1> m_sio1;
     std::unique_ptr<SIO1Server> m_sio1Server;
     std::unique_ptr<SPUInterface> m_spu;
     std::unique_ptr<WebServer> m_webServer;
     std::unique_ptr<SSDPClient> m_ssdpClient;
-
-    uv_loop_t m_loop;
-
-    char m_cdromId[10] = "";
-    char m_cdromLabel[33] = "";
 
   private:
     PcsxConfig m_config;

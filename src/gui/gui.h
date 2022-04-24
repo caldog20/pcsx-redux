@@ -42,6 +42,7 @@
 #include "gui/widgets/memcard_manager.h"
 #include "gui/widgets/registers.h"
 #include "gui/widgets/shader-editor.h"
+#include "gui/widgets/sio1.h"
 #include "gui/widgets/source.h"
 #include "gui/widgets/types.h"
 #include "gui/widgets/vram-viewer.h"
@@ -50,6 +51,7 @@
 #include "magic_enum/include/magic_enum.hpp"
 #include "support/eventbus.h"
 #include "support/settings.h"
+#include "support/version.h"
 #include "widgets/memory_observer.h"
 
 #if defined(__APPLE__)
@@ -271,6 +273,7 @@ class GUI final {
 
     bool m_showCfg = false;
     bool m_showUiCfg = false;
+    bool m_showSysCfg = false;
 
     const CommandLine::args &m_args;
 
@@ -288,6 +291,8 @@ class GUI final {
     Widgets::KernelLog m_kernelLog;
 
     Widgets::CallStacks m_callstacks;
+
+    Widgets::SIO1 m_sio1;
 
     EventBus::Listener m_listener;
 
@@ -320,9 +325,14 @@ class GUI final {
 
     static void byteRateToString(float rate, std::string &out);
 
+    Update m_update;
+    bool m_updateAvailable = false;
+    bool m_updateDownloading = false;
+
   public:
     bool hasJapanese() { return m_hasJapanese; }
     bool m_setupScreenSize = true;
+    bool m_clearTextures = true;
     Widgets::ShaderEditor m_offscreenShaderEditor = {"offscreen"};
     ImFont *getMono() { return m_monoFont ? m_monoFont : ImGui::GetIO().Fonts[0].Fonts[0]; }
 

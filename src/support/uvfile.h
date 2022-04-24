@@ -78,8 +78,8 @@ class UvFile : public File, public UvFilesListType::Node {
     UvFile(const std::filesystem::path& filename, FileOps::ReadWrite)
         : UvFile(filename.u8string(), FileOps::READWRITE) {}
     // Download a URL
-    UvFile(std::string_view url, DownloadUrl) : UvFile(url, nullptr, nullptr, DOWNLOAD_URL) {}
-    UvFile(std::string_view url, std::function<void(UvFile*)>&& completed, uv_loop_t* other, DownloadUrl);
+    UvFile(const std::string_view& url, DownloadUrl) : UvFile(url, nullptr, nullptr, DOWNLOAD_URL) {}
+    UvFile(const std::string_view& url, std::function<void(UvFile*)>&& completed, uv_loop_t* other, DownloadUrl);
 #if defined(__cpp_lib_char8_t)
     UvFile(const std::u8string& filename) : UvFile(reinterpret_cast<const char*>(filename.c_str())) {}
     UvFile(const std::u8string& filename, FileOps::Truncate)
@@ -123,7 +123,7 @@ class UvFile : public File, public UvFilesListType::Node {
     bool m_download = false;
     std::atomic<bool> m_cancelDownload = false;
     std::function<void(UvFile*)> m_cachingDoneCB = nullptr;
-    uv_async_t m_cbAsync;
+    uv_async_t* m_cbAsync = nullptr;
     const std::filesystem::path m_filename;
     size_t m_ptrR = 0;
     size_t m_ptrW = 0;

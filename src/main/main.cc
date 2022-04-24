@@ -33,6 +33,7 @@
 #include "lua/luawrapper.h"
 #include "spu/interface.h"
 #include "support/uvfile.h"
+#include "support/version.h"
 #include "tracy/Tracy.hpp"
 
 static PCSX::GUI *s_gui;
@@ -43,7 +44,7 @@ class SystemImpl final : public PCSX::System {
         m_putcharBuffer += std::string(1, c);
         if (c == '\n') {
             log(PCSX::LogClass::MIPS, std::move(m_putcharBuffer));
-            m_putcharBuffer.clear();  // I don't think this is necessary after the std::move...?
+            m_putcharBuffer.clear();
         }
     }
     virtual void message(std::string &&s) final override {
@@ -88,7 +89,7 @@ class SystemImpl final : public PCSX::System {
     virtual void softReset() final override {
         // debugger or UI is requesting a reset
         m_eventBus->signal(PCSX::Events::ExecutionFlow::Reset{});
-        PCSX::g_emulator->m_psxCpu->psxReset();
+        PCSX::g_emulator->m_cpu->psxReset();
     }
 
     virtual void hardReset() final override {
@@ -97,7 +98,6 @@ class SystemImpl final : public PCSX::System {
         PCSX::g_emulator->reset();
 
         // Upon hard-reset, clear the VRAM texture displayed by the VRAM viewers as well
-        s_gui->setViewport();
         s_gui->bindVRAMTexture();
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 512, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV,
                         PCSX::g_emulator->m_gpu->getVRAM());
@@ -108,8 +108,8 @@ class SystemImpl final : public PCSX::System {
     }
 
     virtual void purgeAllEvents() final override {
-        uv_stop(&PCSX::g_emulator->m_loop);
-        uv_run(&PCSX::g_emulator->m_loop, UV_RUN_DEFAULT);
+        uv_stop(getLoop());
+        uv_run(getLoop(), UV_RUN_DEFAULT);
     }
 
     virtual void testQuit(int code) final override {
@@ -127,7 +127,18 @@ class SystemImpl final : public PCSX::System {
     PCSX::IO<PCSX::UvFile> m_logfile;
 
   public:
-    void setBinDir(std::filesystem::path path) { m_binDir = path; }
+    void setBinDir(std::filesystem::path path) {
+        m_binDir = path;
+        m_version.loadFromFile(new PCSX::PosixFile(path / "version.json"));
+        if (m_version.failed()) {
+            m_version.loadFromFile(
+                new PCSX::PosixFile(path / ".." / "share" / "pcsx-redux" / "resources" / "version.json"));
+        }
+        if (m_version.failed()) {
+            m_version.loadFromFile(
+                new PCSX::PosixFile(path / ".." / "Resources" / "share" / "pcsx-redux" / "resources" / "version.json"));
+        }
+    }
 
     explicit SystemImpl(const CommandLine::args &args) : m_args(args) {}
     ~SystemImpl() {}
@@ -183,7 +194,6 @@ int pcsxMain(int argc, char **argv) {
 
     emulator->setLua();
     s_gui->setLua();
-    emulator->m_cdrom->m_iso.init();
     emulator->m_gpu->init();
     emulator->m_spu->init();
 
@@ -211,7 +221,7 @@ int pcsxMain(int argc, char **argv) {
 
     while (!system->quitting()) {
         if (system->running()) {
-            emulator->m_psxCpu->Execute();
+            emulator->m_cpu->Execute();
         } else {
             s_gui->update();
         }
@@ -219,12 +229,11 @@ int pcsxMain(int argc, char **argv) {
 
     emulator->m_spu->close();
     emulator->m_gpu->close();
-    emulator->m_cdrom->m_iso.close();
+    emulator->m_cdrom->m_iso.reset();
 
-    emulator->m_psxCpu->psxShutdown();
+    emulator->m_cpu->psxShutdown();
     emulator->m_spu->shutdown();
     emulator->m_gpu->shutdown();
-    emulator->m_cdrom->m_iso.shutdown();
     s_gui->close();
     delete s_gui;
 

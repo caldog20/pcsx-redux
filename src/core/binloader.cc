@@ -39,7 +39,7 @@ bool loadCPE(IO<File> file) {
     file->rSeek(0, SEEK_SET);
     uint32_t magic = file->read<uint32_t>();
     if (magic != 0x1455043) return false;
-    auto& regs = g_emulator->m_psxCpu->m_psxRegs;
+    auto& regs = g_emulator->m_cpu->m_regs;
     file->read<uint16_t>();
 
     uint8_t opcode;
@@ -114,7 +114,7 @@ bool loadPSEXE(IO<File> file) {
     uint64_t magic = file->read<uint64_t>();
     if (magic != 0x45584520582d5350) return false;
 
-    auto& regs = g_emulator->m_psxCpu->m_psxRegs;
+    auto& regs = g_emulator->m_cpu->m_regs;
 
     file->read<uint32_t>();
     file->read<uint32_t>();
@@ -163,22 +163,17 @@ bool loadPSF(IO<File> file, bool seenRefresh = false, unsigned depth = 0) {
     file->read(tagtag, 5);
     tagtag[5] = 0;
 
-    std::map<std::string, std::string> pairs;
+    std::map<std::string_view, std::string_view> pairs;
 
     if (strcmp(tagtag, "[TAG]") == 0) {
-        char* tags;
         size_t tagsSize = file->size() - file->rTell();
-        tags = (char*)malloc(tagsSize + 1);
+        std::string tags;
+        tags.reserve(tagsSize);
 
-        file->read(tags, tagsSize);
-        tags[tagsSize] = 0;
+        file->read(tags.data(), tagsSize);
         char* cr;
 
-        while ((cr = strchr(tags, '\r'))) *cr = '\n';
-
-        auto lines = Misc::split(tags, "\n");
-
-        free(tags);
+        auto lines = StringsHelpers::split(std::string_view(tags.data(), tags.size()), "\n\r");
 
         for (auto& line : lines) {
             auto e = line.find('=', 0);

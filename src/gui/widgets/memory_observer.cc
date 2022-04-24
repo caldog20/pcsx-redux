@@ -43,7 +43,7 @@ void PCSX::Widgets::MemoryObserver::draw(const char* title) {
     }
 
     if (ImGui::BeginTabBar("SearchTabBar")) {
-        const uint8_t* memData = g_emulator->m_psxMem->g_psxM;
+        const uint8_t* memData = g_emulator->m_mem->m_psxM;
         const uint32_t memSize = 1024 * 1024 * (g_emulator->settings.get<PCSX::Emulator::Setting8MB>() ? 8 : 2);
         constexpr uint32_t memBase = 0x80000000;
 
@@ -199,7 +199,7 @@ void PCSX::Widgets::MemoryObserver::draw(const char* title) {
                         ImGui::TableSetColumnIndex(2);
                         ImGui::Text(valueDisplayFormat, addressValuePair.scannedValue);
                         ImGui::TableSetColumnIndex(3);
-                        auto buttonName = fmt::format(_("Show in memory editor##{}"), row);
+                        auto buttonName = fmt::format(f_("Show in memory editor##{}"), row);
                         if (ImGui::Button(buttonName.c_str())) {
                             const uint32_t editorAddress = currentAddress - memBase;
                             g_system->m_eventBus->signal(PCSX::Events::GUI::JumpToMemory{editorAddress, stride});
@@ -253,7 +253,7 @@ void PCSX::Widgets::MemoryObserver::draw(const char* title) {
                         ImGui::TableSetColumnIndex(0);
                         ImGui::Text("%x", currentAddress);
                         ImGui::TableSetColumnIndex(1);
-                        auto buttonName = fmt::format(_("Show in memory editor##{}"), row);
+                        auto buttonName = fmt::format(f_("Show in memory editor##{}"), row);
                         if (ImGui::Button(buttonName.c_str())) {
                             const uint32_t editorAddress = currentAddress - memBase;
                             g_system->m_eventBus->signal(
