@@ -123,7 +123,7 @@ class UvFile : public File, public UvFilesListType::Node {
     bool m_download = false;
     std::atomic<bool> m_cancelDownload = false;
     std::function<void(UvFile*)> m_cachingDoneCB = nullptr;
-    uv_async_t m_cbAsync;
+    uv_async_t* m_cbAsync = nullptr;
     const std::filesystem::path m_filename;
     size_t m_ptrR = 0;
     size_t m_ptrW = 0;
