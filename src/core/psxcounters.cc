@@ -196,12 +196,12 @@ void PCSX::Counters::update() {
             PCSX::g_emulator->m_spu->async(
                 SpuUpdInterval[PCSX::g_emulator->settings.get<PCSX::Emulator::SettingVideo>()] * m_rcnts[3].target);
         }
-
-#ifdef ENABLE_SIO1API
-        if (SIO1_update) {
-            SIO1_update(0);
-        }
-#endif
+        uv_run(g_system->getLoop(), UV_RUN_NOWAIT);
+//#ifdef ENABLE_SIO1API
+//        if (SIO1_update) {
+//            SIO1_update(0);
+//        }
+//#endif
 
         // Trigger VBlank IRQ when VBlank starts
         if (m_hSyncCount == VBlankStart[PCSX::g_emulator->settings.get<PCSX::Emulator::SettingVideo>()]) {

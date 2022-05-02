@@ -64,7 +64,8 @@ void PCSX::SIO1Client::closeCB(uv_handle_t* handle) {
 void PCSX::SIO1Client::processData(Slice&& slice) {
     g_emulator->m_sio1->pushSlice(std::move(slice));
 //    g_emulator->m_sio1->receiveCallback();
-    g_emulator->m_sio1->tryDecodeMessage();
+//    g_emulator->m_sio1->tryDecodeMessage();
+      g_emulator->m_sio1->receive();
 
 }
 
@@ -75,7 +76,7 @@ void PCSX::SIO1Client::read(ssize_t nread, const uv_buf_t* buf) {
     }
     assert(m_allocated);
     m_allocated = false;
-
+    if (nread == 0) return;
     Slice slice;
     m_buffer.resize(nread);
     slice.acquire(std::move(m_buffer));
@@ -91,6 +92,12 @@ void PCSX::SIO1Client::readTrampoline(uv_stream_t* stream, ssize_t nread, const 
 void PCSX::SIO1Client::write(unsigned char c) {
     auto* req = new WriteRequest();
     req->m_slice.copy(static_cast<void*>(&c), 1);
+    req->enqueue(this);
+}
+
+void PCSX::SIO1Client::write(uint8_t* stdata, size_t len) {
+    auto* req = new WriteRequest();
+    req->m_slice.copy(static_cast<void*>(stdata), len);
     req->enqueue(this);
 }
 

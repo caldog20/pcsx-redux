@@ -69,6 +69,11 @@ class SIO1 {
      */
 
   public:
+    struct exc_data {
+        uint16_t reg;
+        uint8_t len;
+        uint8_t data;
+    };
     void interrupt();
 
     void reset() {
@@ -88,26 +93,35 @@ class SIO1 {
         checkSize = true;
     }
     void decodeMessage();
-    void encodeDataMessage(bool withData = true);
+    void encodeDataMessage();
+    void encodeFCMessage(bool dxr, bool xts);
     bool receiveMessage();
     bool tryDecodeMessage();
     void encodeMessage();
     void queueTransmit();
     bool checkSize = true;
     uint8_t messageSize = 0;
-    SIOPayload makePayload(std::string data);
-    SIOPayload makePayload(uint8_t data);
+    SIOPayload makePayloadData(std::string data);
+    SIOPayload makePayloadFC(bool dxr, bool xts);
 
+    void exchange(int32_t data);
+    void sendfc();
+    void senddata(uint32_t data);
+    void receive();
 
     uint8_t readBaud8() { return m_regs.baud; }
     uint16_t readBaud16() { return m_regs.baud; }
 
-    uint8_t readCtrl8() { return m_regs.control; }
-    uint16_t readCtrl16() { return m_regs.control; }
+    uint8_t readCtrl8() {
+        return m_regs.control;
+    }
+    uint16_t readCtrl16() {
+        return m_regs.control;
+    }
 
     uint8_t readData8();
-    uint16_t readData16() { return psxHu16(0x1050); }
-    uint32_t readData32() { return psxHu32(0x1050); }
+    uint16_t readData16(); //{ return psxHu16(0x1050); }
+    uint32_t readData32(); //{ return psxHu32(0x1050); }
 
     uint8_t readMode8() { return m_regs.mode; }
     uint16_t readMode16() { return m_regs.mode; }

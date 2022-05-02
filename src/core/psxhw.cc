@@ -177,6 +177,7 @@ uint16_t PCSX::HW::read16(uint32_t add) {
             SIO1_LOG("SIO1.MODE read16 %x; ret = %x\n", add & 0xf, hard);
             return hard;
         case 0x1f80105a:  // control register
+            uv_run(g_system->getLoop(), UV_RUN_NOWAIT);
             hard = PCSX::g_emulator->m_sio1->readCtrl16();
             SIO1_LOG("SIO1.CTRL read16 %x; ret = %x\n", add & 0xf, hard);
             return hard;
@@ -385,6 +386,7 @@ void PCSX::HW::write8(uint32_t add, uint32_t rawvalue) {
             break;
         case 0x1f801050:  // rx/tx data register
             PCSX::g_emulator->m_sio1->writeData8(value);
+            uv_run(g_system->getLoop(), UV_RUN_NOWAIT);
             SIO1_LOG("SIO1.DATA write8 %x; ret = %x\n", add & 0xf, value);
             break;
         case 0x1f801054:  // stat register
@@ -474,6 +476,7 @@ void PCSX::HW::write16(uint32_t add, uint32_t rawvalue) {
             break;
         case 0x1f801050:  // rx/tx data register
             PCSX::g_emulator->m_sio1->writeData16(value);
+            uv_run(g_system->getLoop(), UV_RUN_NOWAIT);
             SIO1_LOG("SIO1.DATA write16 %x, %x\n", add & 0xf, value);
             break;
         case 0x1f801054:  // stat register
@@ -486,6 +489,7 @@ void PCSX::HW::write16(uint32_t add, uint32_t rawvalue) {
             break;
         case 0x1f80105a:  // control register
             PCSX::g_emulator->m_sio1->writeCtrl16(value);
+            uv_run(g_system->getLoop(), UV_RUN_NOWAIT);
             SIO1_LOG("SIO1.CTRL write16 %x, %x\n", add & 0xf, value);
             break;
         case 0x1f80105e:  // baudrate register

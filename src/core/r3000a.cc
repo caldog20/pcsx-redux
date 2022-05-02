@@ -300,9 +300,8 @@ void PCSX::R3000Acpu::branchTest() {
         }
     }
 #endif
-
+//    uv_run(g_system->getLoop(), UV_RUN_NOWAIT);
     const uint32_t cycle = m_regs.cycle;
-
     if ((cycle - PCSX::g_emulator->m_counters->m_psxNextsCounter) >= PCSX::g_emulator->m_counters->m_psxNextCounter)
         PCSX::g_emulator->m_counters->update();
 

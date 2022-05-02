@@ -69,6 +69,7 @@ class SIO1Client : public Intrusive::List<SIO1Client>::Node {
     static void readTrampoline(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf);
     void write(unsigned char c);
     void write(std::string data);
+    void write(uint8_t* stdata, size_t len);
 
     bool m_allocated = false;
     std::string m_buffer;
@@ -100,6 +101,10 @@ class SIO1Server {
     void write(std::string data) {
         for (auto& client : m_clients) client.write(data);
     }
+    void write(uint8_t* stdata, size_t len) {
+        for (auto& client : m_clients) client.write(stdata, len);
+    }
+
 
   private:
     static void closeCB(uv_handle_t* handle);
