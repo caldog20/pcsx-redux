@@ -62,9 +62,17 @@ void PCSX::SIO1Client::closeCB(uv_handle_t* handle) {
 }
 
 void PCSX::SIO1Client::processData(Slice&& slice) {
-    g_emulator->m_sio1->pushSlice(std::move(slice));
-    g_emulator->m_sio1->receive();
-
+    switch (g_emulator->m_sio1->m_sio1Mode) {
+        case SIO1::SIO1Mode::Raw:
+            g_emulator->m_sio1->pushDataSlice(std::move(slice));
+            g_emulator->m_sio1->receiveCallback();
+            break;
+        case SIO1::SIO1Mode::Protobuf:
+            g_emulator->m_sio1->pushSlice(std::move(slice));
+            // g_emulator->m_sio1->receive();
+            g_emulator->m_sio1->tryReceive();
+            break;
+    }
 }
 
 void PCSX::SIO1Client::read(ssize_t nread, const uv_buf_t* buf) {

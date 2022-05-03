@@ -74,35 +74,40 @@ class SIO1 {
         uint8_t len;
         uint8_t data;
     };
+
+    enum class SIO1Mode { Raw, Protobuf };
+    SIO1Mode m_sio1Mode = SIO1Mode::Protobuf;
+    SIO1Mode getSIO1Mode() { return m_sio1Mode; }
+
     void interrupt();
 
     void reset() {
         m_fifo.reset();
+        m_pbfifo.reset();
         m_regs.data = 0;
         m_regs.status = (SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS);
         m_regs.mode = 0;
         m_regs.control = 0;
         m_regs.baud = 0;
         checkSize = true;
+        messageSize = 0;
         g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
     void resetFifo() {
         m_pbfifo.reset();
-        m_txfifo.reset();
         m_fifo.reset();
         checkSize = true;
+        messageSize = 0;
     }
     bool decodeMessage();
     bool tryReceive();
     void encodeDataMessage();
     void encodeFCMessage();
-    bool receiveMessage();
-    bool tryDecodeMessage();
     void encodeMessage();
     bool checkSize = true;
     uint8_t messageSize = 0;
-    SIOPayload makePayloadData(std::string data);
-    SIOPayload makePayloadFC();
+    SIOPayload makeDataPayload(std::string data);
+    SIOPayload makeFCPayload();
 
     void exchange(int32_t data);
     void sendfc();
@@ -198,6 +203,7 @@ class SIO1 {
         READ_LENGTH,
         READ_MESSAGE,
     };
+
     inline void scheduleInterrupt(uint32_t eCycle) { g_emulator->m_cpu->scheduleInterrupt(PSXINT_SIO1, eCycle); }
 
     void updateStat();
@@ -206,6 +212,5 @@ class SIO1 {
 
     Fifo m_fifo;
     Fifo m_pbfifo;
-    Fifo m_txfifo;
 };
 }  // namespace PCSX
