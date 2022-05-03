@@ -63,9 +63,7 @@ void PCSX::SIO1Client::closeCB(uv_handle_t* handle) {
 
 void PCSX::SIO1Client::processData(Slice&& slice) {
     g_emulator->m_sio1->pushSlice(std::move(slice));
-//    g_emulator->m_sio1->receiveCallback();
-//    g_emulator->m_sio1->tryDecodeMessage();
-      g_emulator->m_sio1->receive();
+    g_emulator->m_sio1->receive();
 
 }
 
@@ -106,12 +104,6 @@ void PCSX::SIO1Client::write(std::string data) {
     req->m_slice.acquire(std::move(data));
     req->enqueue(this);
 }
-
-//void PCSX::SIO1Client::write(uint8_t data) {
-//    auto* req = new WriteRequest();
-//    req->m_slice.acquire(std::move(data));
-//    req->enqueue(this);
-//}
 
 void PCSX::SIO1Client::WriteRequest::enqueue(SIO1Client* client) {
     m_buf.base = static_cast<char*>(const_cast<void*>(m_slice.data()));

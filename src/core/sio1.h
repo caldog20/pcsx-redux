@@ -92,17 +92,17 @@ class SIO1 {
         m_fifo.reset();
         checkSize = true;
     }
-    void decodeMessage();
+    bool decodeMessage();
+    bool tryReceive();
     void encodeDataMessage();
-    void encodeFCMessage(bool dxr, bool xts);
+    void encodeFCMessage();
     bool receiveMessage();
     bool tryDecodeMessage();
     void encodeMessage();
-    void queueTransmit();
     bool checkSize = true;
     uint8_t messageSize = 0;
     SIOPayload makePayloadData(std::string data);
-    SIOPayload makePayloadFC(bool dxr, bool xts);
+    SIOPayload makePayloadFC();
 
     void exchange(int32_t data);
     void sendfc();
@@ -112,16 +112,12 @@ class SIO1 {
     uint8_t readBaud8() { return m_regs.baud; }
     uint16_t readBaud16() { return m_regs.baud; }
 
-    uint8_t readCtrl8() {
-        return m_regs.control;
-    }
-    uint16_t readCtrl16() {
-        return m_regs.control;
-    }
+    uint8_t readCtrl8() { return m_regs.control; }
+    uint16_t readCtrl16() { return m_regs.control;}
 
     uint8_t readData8();
-    uint16_t readData16(); //{ return psxHu16(0x1050); }
-    uint32_t readData32(); //{ return psxHu32(0x1050); }
+    uint16_t readData16();
+    uint32_t readData32();
 
     uint8_t readMode8() { return m_regs.mode; }
     uint16_t readMode16() { return m_regs.mode; }
@@ -198,9 +194,9 @@ class SIO1 {
         IRQ8_SIO = 0x100
     };
 
-    enum {
-        READ_LENGTH = 1,
-        READ_MESSAGE = 2,
+    enum class decodeStatus {
+        READ_LENGTH,
+        READ_MESSAGE,
     };
     inline void scheduleInterrupt(uint32_t eCycle) { g_emulator->m_cpu->scheduleInterrupt(PSXINT_SIO1, eCycle); }
 

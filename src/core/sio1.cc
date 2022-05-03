@@ -23,7 +23,10 @@
 #include <string>
 #include <fstream>
 
-PCSX::SIOPayload PCSX::SIO1::makePayloadFC(bool dxr, bool xts) {
+PCSX::SIOPayload PCSX::SIO1::makePayloadFC() {
+    bool dxr = (m_regs.control & CR_DTR);
+    bool xts = (m_regs.control & CR_RTSOUTLVL);
+
     return SIOPayload {
         DataTransfer {},
     FlowControl { dxr, xts },
@@ -31,15 +34,14 @@ PCSX::SIOPayload PCSX::SIO1::makePayloadFC(bool dxr, bool xts) {
 }
 
 PCSX::SIOPayload PCSX::SIO1::makePayloadData(std::string data) {
-    bool xts = (m_regs.control & 32);
-    bool dxr = (m_regs.control & 2);
-    DataTransferData dt;
-    dt = {data};
+    bool dxr = (m_regs.control & CR_DTR);
+    bool xts = (m_regs.control & CR_RTSOUTLVL);
+
     return SIOPayload {
         DataTransfer {
-            dt,
+            DataTransferData { data },
         },
-        FlowControl {},
+        FlowControl {dxr, xts},
     };
 }
 
@@ -78,7 +80,6 @@ bool PCSX::SIO1::tryDecodeMessage() {
         if (payload.get<DataTransferField>().get<DataTransferData>().hasData()) {
 //            printf("Has data\n");
             std::string byte = payload.get<DataTransferField>().get<DataTransferData>().value;
-            std::cout << byte << std::endl;
             PCSX::Slice pushByte;
             pushByte.acquire(std::move(byte));
             m_fifo.pushSlice(std::move(pushByte));
@@ -117,7 +118,6 @@ bool PCSX::SIO1::tryDecodeMessage() {
 }
 
 void PCSX::SIO1::encodeDataMessage() {
-//    printf("Encoding data message\n");
     SIOPayload payload;
     std::string datastr(1, m_regs.data);
     payload = makePayloadData(datastr);
@@ -130,10 +130,9 @@ void PCSX::SIO1::encodeDataMessage() {
     g_emulator->m_sio1Server->write(data);
 }
 
-void PCSX::SIO1::encodeFCMessage(bool dxr, bool xts) {
-    printf("Encoding fc message dxr: %d, xts: %d\n", dxr, xts);
+void PCSX::SIO1::encodeFCMessage() {
     SIOPayload payload;
-    payload = makePayloadFC(dxr, xts);
+    payload = makePayloadFC();
     Protobuf::OutSlice outslice;
     payload.serialize(&outslice);
     std::string data = outslice.finalize();
@@ -156,6 +155,73 @@ void PCSX::SIO1::senddata(uint32_t data) {
     exc_data_send.data = (uint8_t)data;
     exc_data_send.len = 1;
     g_emulator->m_sio1Server->write((uint8_t*)&exc_data_send, sizeof(exc_data_send));
+}
+
+bool PCSX::SIO1::decodeMessage() {
+    auto message = m_pbfifo.readString(messageSize);
+    if (message.size() != messageSize) {
+        printf("Error reading message\n");
+        m_pbfifo.reset();
+        return false;
+    } else {
+        SIOPayload payload;
+        Protobuf::InSlice inslice(reinterpret_cast<const uint8_t *>(message.data()), message.size());
+        payload.deserialize(&inslice, 0);
+        if (payload.get<FlowControlField>().hasData()) {
+            if (payload.get<FlowControlField>().get<FlowControlDXR>().hasData()) {
+                if (payload.get<FlowControlField>().get<FlowControlDXR>().value) {
+                    m_regs.status |= SR_DSR;
+                } else {
+                    m_regs.status &= ~SR_DSR;
+                }
+                if (payload.get<FlowControlField>().get<FlowControlXTS>().hasData()) {
+                    if (payload.get<FlowControlField>().get<FlowControlXTS>().value) {
+                        m_regs.status |= SR_CTS;
+                    } else {
+                        m_regs.status &= ~SR_CTS;
+                    }
+                }
+            }
+        } else {
+            m_regs.status &= ~SR_DSR;
+            m_regs.status &= ~SR_CTS;
+        }
+        if (payload.get<DataTransferField>().get<DataTransferData>().hasData()) {
+            std::string byte = payload.get<DataTransferField>().get<DataTransferData>().value;
+            PCSX::Slice pushByte;
+            pushByte.acquire(std::move(byte));
+            pushDataSlice(std::move(pushByte));
+            receiveCallback();
+        }
+    }
+    return true;
+}
+
+bool PCSX::SIO1::tryReceive() {
+    if (!(m_pbfifo.size())) {
+        return false;
+    }
+
+read_length:
+    if (checkSize) {
+        messageSize = m_pbfifo.byte();
+        checkSize = false;
+    }
+    if (m_pbfifo.size() < messageSize) {
+        return false;
+    }
+
+    if (!decodeMessage()) {
+        checkSize = true;
+        return false;
+    } else {
+        checkSize = true;
+        if (m_pbfifo.size() > 2) {
+            goto read_length;
+        }
+        return true;
+    }
+
 }
 
 void PCSX::SIO1::receive() {
@@ -188,62 +254,62 @@ void PCSX::SIO1::receive() {
     }
 }
 
-void PCSX::SIO1::exchange(int32_t data) {
-    exc_data exc_data_send, exc_data_recv;
-    memset(&exc_data_send, 0x00, sizeof(exc_data_send));
-    memset(&exc_data_recv, 0x00, sizeof(exc_data_recv));
-    if (data == -2) {
-        if (m_pbfifo.size() >= sizeof(exc_data_recv)) {
-            m_pbfifo.read(&exc_data_recv, sizeof(exc_data_recv));
-            if (exc_data_recv.reg & CR_DTR) {
-                m_regs.status |= SR_DSR;
-            } else {
-                m_regs.status &= ~SR_DSR;
-            }
-            if (exc_data_recv.reg & CR_RTSOUTLVL) {
-                m_regs.status |= SR_CTS;
-            } else {
-                m_regs.status &= ~SR_CTS;
-            }
-            updateStat();
-            if (exc_data_recv.len > 0) {
-                Slice slice;
-                slice.copy(&exc_data_recv.data, 1);
-                m_fifo.pushSlice(std::move(slice));
-                receiveCallback();
-            }
-        }
-        return;
-    }
-    exc_data_send.reg = m_regs.control;
-    exc_data_send.len = 0;
-    if (data >= 0) {
-        exc_data_send.data = (uint8_t)data;
-        exc_data_send.len = 1;
-    }
-    g_emulator->m_sio1Server->write((uint8_t*)&exc_data_send, sizeof(exc_data_send));
-
-//    if (m_pbfifo.size() >= sizeof(exc_data_recv)) {
-//        m_pbfifo.read(&exc_data_recv, sizeof(exc_data_recv));
-//        if (exc_data_recv.reg & CR_DTR) {
-//            m_regs.status |= SR_DSR;
-//        } else {
-//            m_regs.status &= ~SR_DSR;
+//void PCSX::SIO1::exchange(int32_t data) {
+//    exc_data exc_data_send, exc_data_recv;
+//    memset(&exc_data_send, 0x00, sizeof(exc_data_send));
+//    memset(&exc_data_recv, 0x00, sizeof(exc_data_recv));
+//    if (data == -2) {
+//        if (m_pbfifo.size() >= sizeof(exc_data_recv)) {
+//            m_pbfifo.read(&exc_data_recv, sizeof(exc_data_recv));
+//            if (exc_data_recv.reg & CR_DTR) {
+//                m_regs.status |= SR_DSR;
+//            } else {
+//                m_regs.status &= ~SR_DSR;
+//            }
+//            if (exc_data_recv.reg & CR_RTSOUTLVL) {
+//                m_regs.status |= SR_CTS;
+//            } else {
+//                m_regs.status &= ~SR_CTS;
+//            }
+//            updateStat();
+//            if (exc_data_recv.len > 0) {
+//                Slice slice;
+//                slice.copy(&exc_data_recv.data, 1);
+//                m_fifo.pushSlice(std::move(slice));
+//                receiveCallback();
+//            }
 //        }
-//        if (exc_data_recv.reg & CR_RTSOUTLVL) {
-//            m_regs.status |= SR_CTS;
-//        } else {
-//            m_regs.status &= ~SR_CTS;
-//        }
+//        return;
 //    }
+//    exc_data_send.reg = m_regs.control;
+//    exc_data_send.len = 0;
+//    if (data >= 0) {
+//        exc_data_send.data = (uint8_t)data;
+//        exc_data_send.len = 1;
+//    }
+//    g_emulator->m_sio1Server->write((uint8_t*)&exc_data_send, sizeof(exc_data_send));
 //
-//    if (exc_data_recv.len > 0) {
-//        Slice slice;
-//        slice.copy(&exc_data_recv.data, 1);
-//        m_fifo.pushSlice(std::move(slice));
-//        receiveCallback();
-//    }
-}
+////    if (m_pbfifo.size() >= sizeof(exc_data_recv)) {
+////        m_pbfifo.read(&exc_data_recv, sizeof(exc_data_recv));
+////        if (exc_data_recv.reg & CR_DTR) {
+////            m_regs.status |= SR_DSR;
+////        } else {
+////            m_regs.status &= ~SR_DSR;
+////        }
+////        if (exc_data_recv.reg & CR_RTSOUTLVL) {
+////            m_regs.status |= SR_CTS;
+////        } else {
+////            m_regs.status &= ~SR_CTS;
+////        }
+////    }
+////
+////    if (exc_data_recv.len > 0) {
+////        Slice slice;
+////        slice.copy(&exc_data_recv.data, 1);
+////        m_fifo.pushSlice(std::move(slice));
+////        receiveCallback();
+////    }
+//}
 
 void PCSX::SIO1::interrupt() {
     SIO1_LOG("SIO1 Interrupt (CP0.Status = %x)\n", PCSX::g_emulator->m_cpu->m_regs.CP0.n.Status);
@@ -276,7 +342,6 @@ void PCSX::SIO1::interrupt() {
 }
 
 uint8_t PCSX::SIO1::readData8() {
-//    printf("Read data8\n");
     updateStat();
     if (m_regs.status & SR_RXRDY) {
         m_regs.data = m_fifo.byte();
@@ -287,7 +352,6 @@ uint8_t PCSX::SIO1::readData8() {
 }
 
 uint16_t PCSX::SIO1::readData16() {
-//    printf("Read data16\n");
     updateStat();
     if (m_regs.status & SR_RXRDY) {
         m_fifo.read(&m_regs.data, 2);
@@ -298,7 +362,6 @@ uint16_t PCSX::SIO1::readData16() {
 }
 
 uint32_t PCSX::SIO1::readData32() {
-//    printf("Read data32\n");
     updateStat();
     if (m_regs.status & SR_RXRDY) {
         m_fifo.read(&m_regs.data, 4);
@@ -350,15 +413,11 @@ void PCSX::SIO1::receiveCallback() {
     }
 }
 
-void PCSX::SIO1::queueTransmit() {
-    Slice sl;
-    sl.copy(static_cast<void*>(&m_regs.data), 1);
-    m_txfifo.pushSlice(std::move(sl));
-    encodeDataMessage();
+bool PCSX::SIO1::isTransmitReady() {
+    return (m_regs.control & CR_TXEN) && (m_regs.status & SR_CTS) && (m_regs.status & SR_TXRDY2);
 }
 
 void PCSX::SIO1::transmitData() {
-//    printf("Transmit data\n");
     senddata(m_regs.data);
     if (m_regs.control & CR_TXIRQEN) {
         if (m_regs.status & SR_TXRDY || m_regs.status & SR_TXRDY2) {
@@ -368,10 +427,6 @@ void PCSX::SIO1::transmitData() {
             }
         }
     }
-}
-
-bool PCSX::SIO1::isTransmitReady() {
-    return (m_regs.control & CR_TXEN) && (m_regs.status & SR_CTS) && (m_regs.status & SR_TXRDY2);
 }
 
 void PCSX::SIO1::updateStat() {
@@ -386,7 +441,6 @@ void PCSX::SIO1::writeBaud16(uint16_t v) {
     m_regs.baud = v;
     sendfc();
     psxHu8ref(0x105E) = m_regs.baud;
-
 }
 
 void PCSX::SIO1::writeCtrl16(uint16_t v) {
@@ -430,12 +484,10 @@ void PCSX::SIO1::writeData8(uint8_t v) {
     if (isTransmitReady()) {
         transmitData();
     }
-
     psxHu8ref(0x1050) = m_regs.data;
 }
 
 void PCSX::SIO1::writeMode16(uint16_t v) {
-//    printf("writeMode16\n");
     sendfc();
     m_regs.mode = v;
 }
@@ -445,7 +497,6 @@ void PCSX::SIO1::writeStat32(uint32_t v) {
     if (isTransmitReady()) {
         transmitData();
     }
-
     psxHu32ref(0x1054) = SWAP_LE32(m_regs.status);
 
 }
