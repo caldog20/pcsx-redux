@@ -18,10 +18,7 @@
  ***************************************************************************/
 
 #include "core/sio1.h"
-#include "fmt/format.h"
-#include <iostream>
 #include <string>
-#include <fstream>
 
 PCSX::SIOPayload PCSX::SIO1::makeFCPayload() {
     bool dxr = (m_regs.control & CR_DTR);
@@ -60,11 +57,14 @@ void PCSX::SIO1::encodeDataMessage() {
 }
 
 void PCSX::SIO1::encodeFCMessage() {
-    bool dxr = (m_regs.control & CR_DTR);
-    bool xts = (m_regs.control & CR_RTSOUTLVL);
-    if (sentDxr == dxr && sentXts == xts) {
-        return;
+    if (!initialMessage) {
+        bool dxr = (m_regs.control & CR_DTR);
+        bool xts = (m_regs.control & CR_RTSOUTLVL);
+        if (sentDxr == dxr && sentXts == xts) {
+            return;
+        }
     }
+
     SIOPayload payload;
     payload = makeFCPayload();
     Protobuf::OutSlice outslice;
@@ -73,6 +73,7 @@ void PCSX::SIO1::encodeFCMessage() {
     uint8_t size = data.size();
     g_emulator->m_sio1Server->write(size);
     g_emulator->m_sio1Server->write(data);
+    initialMessage = false;
 }
 
 bool PCSX::SIO1::decodeMessage() {

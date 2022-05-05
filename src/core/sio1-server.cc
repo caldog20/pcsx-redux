@@ -54,6 +54,7 @@ void PCSX::SIO1Client::close() {
     if (m_status != SIO1ClientStatus::OPEN) return;
     m_status = SIO1ClientStatus::CLOSING;
     uv_close(reinterpret_cast<uv_handle_t*>(&m_tcp), closeCB);
+    g_emulator->m_sio1->initialMessage = true;
 }
 
 void PCSX::SIO1Client::closeCB(uv_handle_t* handle) {

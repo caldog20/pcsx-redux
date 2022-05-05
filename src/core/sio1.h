@@ -91,6 +91,7 @@ class SIO1 {
         m_regs.baud = 0;
         checkSize = true;
         messageSize = 0;
+        initialMessage = true;
         g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
     void resetFifo() {
@@ -98,6 +99,7 @@ class SIO1 {
         m_fifo.reset();
         checkSize = true;
         messageSize = 0;
+        initialMessage = true;
     }
     bool decodeMessage();
     bool tryReceive();
@@ -107,6 +109,7 @@ class SIO1 {
     bool checkSize = true;
     bool sentDxr;
     bool sentXts;
+    bool initialMessage = true;
     uint8_t messageSize = 0;
     SIOPayload makeDataPayload(std::string data);
     SIOPayload makeFCPayload();
@@ -212,7 +215,7 @@ class SIO1 {
     void transmitData();
     bool isTransmitReady();
 
-    Fifo m_fifo;
-    Fifo m_pbfifo;
+    Fifo m_fifo; // SIO1 data fifo
+    Fifo m_pbfifo; // Protobuf receive fifo
 };
 }  // namespace PCSX
