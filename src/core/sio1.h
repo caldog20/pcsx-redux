@@ -105,6 +105,8 @@ class SIO1 {
     void encodeFCMessage();
     void encodeMessage();
     bool checkSize = true;
+    bool sentDxr;
+    bool sentXts;
     uint8_t messageSize = 0;
     SIOPayload makeDataPayload(std::string data);
     SIOPayload makeFCPayload();

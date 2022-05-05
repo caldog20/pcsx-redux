@@ -26,7 +26,8 @@
 PCSX::SIOPayload PCSX::SIO1::makeFCPayload() {
     bool dxr = (m_regs.control & CR_DTR);
     bool xts = (m_regs.control & CR_RTSOUTLVL);
-
+    sentDxr = dxr;
+    sentXts = xts;
     return SIOPayload {
         DataTransfer {},
     FlowControl { dxr, xts },
@@ -59,6 +60,11 @@ void PCSX::SIO1::encodeDataMessage() {
 }
 
 void PCSX::SIO1::encodeFCMessage() {
+    bool dxr = (m_regs.control & CR_DTR);
+    bool xts = (m_regs.control & CR_RTSOUTLVL);
+    if (sentDxr == dxr && sentXts == xts) {
+        return;
+    }
     SIOPayload payload;
     payload = makeFCPayload();
     Protobuf::OutSlice outslice;
@@ -85,13 +91,17 @@ bool PCSX::SIO1::decodeMessage() {
                 } else {
                     m_regs.status &= ~SR_DSR;
                 }
+            } else {
+                m_regs.status &= ~SR_DSR;
             }
             if (payload.get<FlowControlField>().get<FlowControlXTS>().hasData()) {
                 if (payload.get<FlowControlField>().get<FlowControlXTS>().value) {
                     m_regs.status |= SR_CTS;
                 } else {
-                    m_regs.status &= ~SR_CTS;
+                    m_regs.status &= ~SR_DSR;
                 }
+            } else {
+                m_regs.status &= ~SR_CTS;
             }
             } else {
                 m_regs.status &= ~SR_DSR;
