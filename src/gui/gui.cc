@@ -1579,7 +1579,12 @@ See the wiki for details.)"));
             ImGui::InputInt(_("SIO1 Server Port"), &debugSettings.get<Emulator::DebugSettings::SIO1ServerPort>().value);
         auto& currentSIO1Mode = debugSettings.get<Emulator::DebugSettings::SIO1ModeSetting>().value;
         auto currentSIO1Name = magic_enum::enum_name(currentSIO1Mode);
-
+        if (ImGui::Button(_("Reset SIO"))) {
+            g_emulator->m_sio1->reset();
+        }
+        if (ImGui::Button(_("Reset SIO Fifo"))) {
+            g_emulator->m_sio1->resetFifo();
+        }
         if (ImGui::BeginCombo(_("SIO1Mode"), currentSIO1Name.data())) {
             for (auto v : magic_enum::enum_values<Emulator::DebugSettings::SIO1Mode>()) {
                 bool selected = (v == currentSIO1Mode);
