@@ -702,9 +702,12 @@ PCSX::UvFifo::UvFifo(uv_tcp_t *tcp) : File(File::FileType::RW_STREAM) {
         },
         [](uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
             UvFifo *fifo = reinterpret_cast<UvFifo *>(client->data);
-            if (nread <= 0) {
+            if (nread < 0) {
                 free(fifo->m_buffer);
                 fifo->m_closed = true;
+                return;
+            } else if (nread == 0) {
+                free(fifo->m_buffer);
                 return;
             }
             assert(fifo->m_buffer);
