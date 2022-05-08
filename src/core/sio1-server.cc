@@ -38,6 +38,14 @@ void PCSX::SIO1Server::startServer(uv_loop_t* loop, int port) {
     if (m_serverStatus == SIO1ServerStatus::SERVER_STARTED) {
         throw std::runtime_error("Server already started");
     }
+    auto& emuSettings = PCSX::g_emulator->settings;
+    auto& debugSettings = emuSettings.get<Emulator::SettingDebugSettings>();
+    auto SIO1ModeSettings = debugSettings.get<Emulator::DebugSettings::SIO1ModeSetting>().value;
+    if (SIO1ModeSettings == Emulator::DebugSettings::SIO1Mode::Raw) {
+        g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Raw;
+    } else {
+        g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Protobuf;
+    }
 
     m_serverStatus = SIO1ServerStatus::SERVER_STARTED;
 

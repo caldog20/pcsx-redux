@@ -1577,6 +1577,25 @@ relay information between tcp and sio1.
 See the wiki for details.)"));
         changed |=
             ImGui::InputInt(_("SIO1 Server Port"), &debugSettings.get<Emulator::DebugSettings::SIO1ServerPort>().value);
+        auto& currentSIO1Mode = debugSettings.get<Emulator::DebugSettings::SIO1ModeSetting>().value;
+        auto currentSIO1Name = magic_enum::enum_name(currentSIO1Mode);
+
+        if (ImGui::BeginCombo(_("SIO1Mode"), currentSIO1Name.data())) {
+            for (auto v : magic_enum::enum_values<Emulator::DebugSettings::SIO1Mode>()) {
+                bool selected = (v == currentSIO1Mode);
+                auto name = magic_enum::enum_name(v);
+                if (ImGui::Selectable(name.data(), selected)) {
+                    currentSIO1Mode = v;
+                    changed = true;
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+
         if (ImGui::CollapsingHeader(_("Advanced BIOS patching"))) {
             auto& overlays = settings.get<Emulator::SettingBiosOverlay>();
             if (ImGui::Button(_("Add one entry"))) overlays.push_back({});

@@ -137,7 +137,11 @@ bool PCSX::SIO1::sio1StateMachine() {
     if (m_sio1Mode == SIO1Mode::Raw) {
         if (m_fifo->size() > 0) {
             auto byte = m_fifo->byte();
-            m_sio1fifo.write(byte);
+            Slice byteslice;
+            byteslice.copy(static_cast<uint8_t*>(&byte), 1);
+            m_sio1fifo.pushSlice(std::move(byteslice));
+            receiveCallback();
+            return true;
         }
     }
     if (m_fifo->size() <= 0) {
