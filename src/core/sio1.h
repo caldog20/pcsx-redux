@@ -29,9 +29,11 @@
 #include "core/sio1-server.h"
 #include "core/sstate.h"
 #include "support/file.h"
+#include "support/protobuf.h"
 
 //#define SIO1_CYCLES (m_regs.baud * 8)
 #define SIO1_CYCLES (1)
+#define SIO1_PB_VERSION (2)
 
 namespace PCSX {
 
@@ -42,6 +44,29 @@ struct SIO1Registers {
     uint16_t control;
     uint16_t baud;
 };
+
+typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("dxr"), 1> FlowControlDXR;
+typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("xts"), 2> FlowControlXTS;
+typedef Protobuf::Message<TYPESTRING("FlowControl"), FlowControlDXR, FlowControlXTS> FlowControl;
+typedef Protobuf::MessageField<FlowControl, TYPESTRING("flow_control"), 2> FlowControlField;
+typedef Protobuf::Field<Protobuf::Bytes, TYPESTRING("data"), 1> DataTransferData;
+typedef Protobuf::Message<TYPESTRING("DataTransfer"), DataTransferData> DataTransfer;
+typedef Protobuf::MessageField<DataTransfer, TYPESTRING("data_transfer"), 1> DataTransferField;
+typedef Protobuf::Message<TYPESTRING("SIOPayload"), DataTransferField, FlowControlField> SIOPayload;
+
+//typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("dxr"), 1> FlowControlDXR;
+//typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("xts"), 2> FlowControlXTS;
+//typedef Protobuf::Message<TYPESTRING("FlowControl"), FlowControlDXR, FlowControlXTS> FlowControl;
+//typedef Protobuf::MessageField<FlowControl, TYPESTRING("flow_control"), 3> FlowControlField;
+//
+//typedef Protobuf::Field<Protobuf::Bytes, TYPESTRING("data"), 1> DataTransferData;
+//typedef Protobuf::Message<TYPESTRING("DataTransfer"), DataTransferData> DataTransfer;
+//typedef Protobuf::MessageField<DataTransfer, TYPESTRING("data_transfer"), 2> DataTransferField;
+//
+//typedef Protobuf::Field<Protobuf::UInt32, TYPESTRING("version_number"), 1> VersionNumber;
+//typedef Protobuf::Message<TYPESTRING("Version"), VersionNumber> Version;
+//typedef Protobuf::MessageField<Version, TYPESTRING("version_field"), 1> VersionField;
+//typedef Protobuf::Message<TYPESTRING("SIOPayload"), VersionField, DataTransferField, FlowControlField> SIOPayload;
 
 class SIO1 {
     /*
@@ -58,18 +83,46 @@ class SIO1 {
      */
 
   public:
+    enum class SIO1Mode { Raw, Protobuf };
+    SIO1Mode m_sio1Mode = SIO1Mode::Protobuf;
+    SIO1Mode getSIO1Mode() { return m_sio1Mode; }
     void interrupt();
 
     void reset() {
         m_fifo.reset();
+        m_sio1fifo.reset();
         m_regs.data = 0;
         m_regs.status = (SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS);
         m_regs.mode = 0;
         m_regs.control = 0;
         m_regs.baud = 0;
-
+        checkSize = true;
+        messageSize = 0;
+        initialMessage = true;
         g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
+
+    void resetFifo() {
+        m_sio1fifo.reset();
+        m_fifo.reset();
+        checkSize = true;
+        messageSize = 0;
+        initialMessage = true;
+    }
+
+    // Protobuf Stuffs
+    bool decodeMessage();
+    bool sio1StateMachine();
+    void encodeDataMessage();
+    void encodeFCMessage();
+    void encodeMessage();
+    bool checkSize = true;
+    bool sentDxr;
+    bool sentXts;
+    bool initialMessage = true;
+    uint8_t messageSize = 0;
+    SIOPayload makeDataPayload(std::string data);
+    SIOPayload makeFCPayload();
 
     uint8_t readBaud8() { return m_regs.baud; }
     uint16_t readBaud16() { return m_regs.baud; }
@@ -78,8 +131,8 @@ class SIO1 {
     uint16_t readCtrl16() { return m_regs.control; }
 
     uint8_t readData8();
-    uint16_t readData16() { return psxHu16(0x1050); }
-    uint32_t readData32() { return psxHu32(0x1050); }
+    uint16_t readData16();
+    uint32_t readData32();
 
     uint8_t readMode8() { return m_regs.mode; }
     uint16_t readMode16() { return m_regs.mode; }
@@ -153,6 +206,10 @@ class SIO1 {
         IRQ8_SIO = 0x100
     };
 
+    enum class decodeStatus {
+        READ_LENGTH,
+        READ_MESSAGE,
+    };
     inline void scheduleInterrupt(uint32_t eCycle) { g_emulator->m_cpu->scheduleInterrupt(PSXINT_SIO1, eCycle); }
 
     void updateStat();
@@ -160,6 +217,7 @@ class SIO1 {
     bool isTransmitReady();
 
     IO<File> m_fifo;
+    Fifo m_sio1fifo;
 
     friend class SIO1Server;
 };

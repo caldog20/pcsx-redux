@@ -27,6 +27,7 @@
 #include "core/gpu.h"
 #include "fmt/printf.h"
 #include "spu/interface.h"
+#include "core/sio1.h"
 
 /******************************************************************************/
 
@@ -197,11 +198,8 @@ void PCSX::Counters::update() {
                 SpuUpdInterval[PCSX::g_emulator->settings.get<PCSX::Emulator::SettingVideo>()] * m_rcnts[3].target);
         }
 
-#ifdef ENABLE_SIO1API
-        if (SIO1_update) {
-            SIO1_update(0);
-        }
-#endif
+        // SIO1 callback on hsync to process data
+        PCSX::g_emulator->m_sio1->sio1StateMachine();
 
         // Trigger VBlank IRQ when VBlank starts
         if (m_hSyncCount == VBlankStart[PCSX::g_emulator->settings.get<PCSX::Emulator::SettingVideo>()]) {
