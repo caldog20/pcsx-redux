@@ -87,6 +87,7 @@ bool PCSX::SIO1::decodeMessage() {
     std::string message = m_fifo->readString(messageSize);
     if (message.size() != messageSize) {
         m_fifo.reset();
+        m_sio1fifo.reset();
         return false;
     } else {
         SIOPayload payload;
@@ -324,6 +325,7 @@ void PCSX::SIO1::writeCtrl16(uint16_t v) {
         m_regs.mode = 0;
         m_regs.control = 0;
         m_regs.baud = 0;
+        resetFifo();
 
         PCSX::g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }

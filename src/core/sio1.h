@@ -89,7 +89,6 @@ class SIO1 {
     void interrupt();
 
     void reset() {
-        m_fifo.reset();
         m_sio1fifo.reset();
         m_regs.data = 0;
         m_regs.status = (SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS);
@@ -104,7 +103,6 @@ class SIO1 {
 
     void resetFifo() {
         m_sio1fifo.reset();
-        m_fifo.reset();
         checkSize = true;
         messageSize = 0;
         initialMessage = true;
