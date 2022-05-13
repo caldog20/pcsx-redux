@@ -67,5 +67,6 @@ void PCSX::SIO1Server::startServer(uv_loop_t* loop, int port) {
 
 void PCSX::SIO1Server::stopServer() {
     m_serverStatus = SIO1ServerStatus::SERVER_STOPPING;
+    g_emulator->m_counters->m_pollSIO1 = false;
     m_fifoListener.stop();
 }
