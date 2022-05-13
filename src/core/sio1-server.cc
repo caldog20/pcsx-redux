@@ -43,8 +43,10 @@ void PCSX::SIO1Server::startServer(uv_loop_t* loop, int port) {
     auto SIO1ModeSettings = debugSettings.get<Emulator::DebugSettings::SIO1ModeSetting>().value;
     if (SIO1ModeSettings == Emulator::DebugSettings::SIO1Mode::Raw) {
         g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Raw;
+        g_emulator->m_counters->m_pollSIO1 = false;
     } else {
         g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Protobuf;
+        g_emulator->m_counters->m_pollSIO1 = true;
     }
 
     m_serverStatus = SIO1ServerStatus::SERVER_STARTED;

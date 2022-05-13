@@ -108,6 +108,8 @@ class Counters {
 
     void save(PCSX::SaveStates::Counters &counters);
     void load(const PCSX::SaveStates::Counters &counters);
+
+    bool m_pollSIO1 = false; // For SIO1 polling
 };
 
 }  // namespace PCSX

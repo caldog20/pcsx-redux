@@ -199,7 +199,9 @@ void PCSX::Counters::update() {
         }
 
         // SIO1 callback on hsync to process data
-        PCSX::g_emulator->m_sio1->sio1StateMachine();
+        if (m_pollSIO1) {
+            PCSX::g_emulator->m_sio1->sio1StateMachine();
+        }
 
         // Trigger VBlank IRQ when VBlank starts
         if (m_hSyncCount == VBlankStart[PCSX::g_emulator->settings.get<PCSX::Emulator::SettingVideo>()]) {
