@@ -17,9 +17,14 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
  ***************************************************************************/
 
-#define GLFW_INCLUDE_NONE
-#include "gui/gui.h"
+// These need to go first
+#include "support/windowswrapper.h"
+#ifdef _WIN32
+#include <shellapi.h>
+#endif
 
+// And only then we can load the rest
+#define GLFW_INCLUDE_NONE
 #include <GL/gl3w.h>
 #include <GLFW/glfw3.h>
 #include <assert.h>
@@ -49,6 +54,7 @@
 #include "flags.h"
 #include "fmt/chrono.h"
 #include "gpu/soft/externals.h"
+#include "gui/gui.h"
 #include "gui/resources.h"
 #include "gui/shaders/crt-lottes.h"
 #include "imgui.h"
@@ -69,6 +75,23 @@
 extern "C" {
 _declspec(dllexport) DWORD NvOptimusEnablement = 1;
 _declspec(dllexport) DWORD AmdPowerXpressRequestHighPerformance = 1;
+}
+
+void PCSX::GUI::openUrl(const std::string_view& url) {
+    std::string storage = std::string(url);
+    ShellExecuteA(0, 0, storage.c_str(), 0, 0, SW_SHOW);
+}
+#elif defined(__APPLE__) && defined(__MACH__)
+#include <stdlib.h>
+void PCSX::GUI::openUrl(const std::string_view& url) {
+    auto cmd = fmt::format("open {}", url);
+    system(cmd.c_str());
+}
+#else
+#include <stdlib.h>
+void PCSX::GUI::openUrl(const std::string_view& url) {
+    auto cmd = fmt::format("xdg-open {}", url);
+    system(cmd.c_str());
 }
 #endif
 
@@ -661,6 +684,10 @@ void PCSX::GUI::startFrame() {
         saveCfg();
     }
     glBindFramebuffer(GL_FRAMEBUFFER, m_offscreenFrameBuffer);
+    GLenum DrawBuffers[1] = {GL_COLOR_ATTACHMENT0};
+
+    // this call seems to sometime fails when the window is minimized...?
+    glDrawBuffers(1, DrawBuffers);  // "1" is the size of DrawBuffers
 
     // Check hotkeys (TODO: Make configurable)
     if (ImGui::IsKeyPressed(GLFW_KEY_ESCAPE)) {
@@ -711,14 +738,7 @@ void PCSX::GUI::setViewport() { glViewport(0, 0, m_renderSize.x, m_renderSize.y)
 void PCSX::GUI::flip() {
     const GLuint texture = m_offscreenTextures[m_currentTexture];
     glBindFramebuffer(GL_FRAMEBUFFER, m_offscreenFrameBuffer);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    glBindRenderbuffer(GL_RENDERBUFFER, m_offscreenDepthBuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
-    GLenum DrawBuffers[1] = {GL_COLOR_ATTACHMENT0};
-
-    // this call seems to sometime fails when the window is minimized...?
-    glDrawBuffers(1, DrawBuffers);  // "1" is the size of DrawBuffers
 
     assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
     m_currentTexture ^= 1;
@@ -995,14 +1015,9 @@ in Configuration->Emulation, restart PCSX-Redux, then try again.)"));
                     PCSX::g_emulator->m_gpu->stopDump();
                 }
                 ImGui::Separator();
-                ImGui::MenuItem(_("Show types"), nullptr, &m_types.m_show);
-                ImGui::MenuItem(_("Show source"), nullptr, &m_source.m_show);
-                ImGui::Separator();
                 ImGui::MenuItem(_("Fullscreen render"), nullptr, &m_fullscreenRender);
                 ImGui::MenuItem(_("Show Output Shader Editor"), nullptr, &m_outputShaderEditor.m_show);
                 ImGui::MenuItem(_("Show Offscreen Shader Editor"), nullptr, &m_offscreenShaderEditor.m_show);
-                ImGui::Separator();
-                ImGui::MenuItem(_("Show raw DWARF info"), nullptr, &m_dwarf.m_show);
                 ImGui::EndMenu();
             }
             ImGui::Separator();
@@ -1155,7 +1170,7 @@ in Configuration->Emulation, restart PCSX-Redux, then try again.)"));
     }
 
     if (m_assembly.m_show) {
-        m_assembly.draw(this, &PCSX::g_emulator->m_cpu->m_regs, PCSX::g_emulator->m_mem.get(), &m_dwarf, _("Assembly"));
+        m_assembly.draw(this, &PCSX::g_emulator->m_cpu->m_regs, PCSX::g_emulator->m_mem.get(), _("Assembly"));
     }
 
     if (m_disassembly.m_show && PCSX::g_emulator->m_cpu->isDynarec()) {
@@ -1172,15 +1187,6 @@ in Configuration->Emulation, restart PCSX-Redux, then try again.)"));
 
     changed |= about();
     interruptsScaler();
-
-    if (m_dwarf.m_show) {
-        m_dwarf.draw(_("Dwarf"));
-    }
-
-    m_types.draw();
-    if (m_source.m_show) {
-        m_source.draw(_("Source"), g_emulator->m_cpu->m_regs.pc, this);
-    }
 
     if (m_outputShaderEditor.draw(this, _("Output Video"))) {
         // maybe throttle this?
@@ -1791,11 +1797,28 @@ bool PCSX::GUI::about() {
                 }
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem(_("Authors"))) {
+            ImGuiTabItemFlags flag = 0;
+            if (m_aboutSelectAuthors) {
+                flag |= ImGuiTabItemFlags_SetSelected;
+                m_aboutSelectAuthors = false;
+            }
+            if (ImGui::BeginTabItem(_("Authors"), nullptr, flag)) {
                 ImGui::BeginChild("Authors", ImVec2(0, 0), true);
-                ImGui::Text("%s",
+                ImGui::TextUnformatted(
 #include "AUTHORS"
                 );
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem(_("Licenses"))) {
+                ImGui::BeginChild("Licenses", ImVec2(0, 0), true);
+
+                static MarkDown md({{"AUTHORS", [this]() { m_aboutSelectAuthors = true; }}});
+                std::string_view text =
+#include "LICENSES.md"
+                    ;
+                md.print(text);
+
                 ImGui::EndChild();
                 ImGui::EndTabItem();
             }
