@@ -98,7 +98,7 @@ void PCSX::SIO1Client::startClient(std::string_view address, unsigned port) {
     }
 
     m_clientStatus = SIO1ClientStatus::CLIENT_STARTED;
-    g_emulator->m_counters->m_pollSIO1 = false;
+    g_emulator->m_counters->m_pollSIO1 = true;
     m_uvFifo = new UvFifo(address, port);
     if (m_uvFifo) {
         g_emulator->m_sio1->m_fifo.setFile(m_uvFifo);
