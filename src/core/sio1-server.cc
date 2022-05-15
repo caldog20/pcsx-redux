@@ -44,17 +44,16 @@ void PCSX::SIO1Server::startServer(uv_loop_t* loop, int port) {
     auto SIO1ModeSettings = debugSettings.get<Emulator::DebugSettings::SIO1ModeSetting>().value;
     if (SIO1ModeSettings == Emulator::DebugSettings::SIO1Mode::Raw) {
         g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Raw;
-        g_emulator->m_counters->m_pollSIO1 = false;
     } else {
         g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Protobuf;
-        g_emulator->m_counters->m_pollSIO1 = true;
     }
 
     m_serverStatus = SIO1ServerStatus::SERVER_STARTED;
-
+    g_emulator->m_counters->m_pollSIO1 = true;
     m_fifoListener.start(port, loop, &m_async, [this](auto fifo) {
         if (fifo) {
             g_emulator->m_sio1->m_fifo.setFile(fifo);
+
         } else {
             g_emulator->m_sio1->m_fifo.reset();
             m_async.data = this;
@@ -94,13 +93,12 @@ void PCSX::SIO1Client::startClient(std::string_view address, unsigned port) {
     auto SIO1ModeSettings = debugSettings.get<Emulator::DebugSettings::SIO1ModeSetting>().value;
     if (SIO1ModeSettings == Emulator::DebugSettings::SIO1Mode::Raw) {
         g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Raw;
-        g_emulator->m_counters->m_pollSIO1 = false;
     } else {
         g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Protobuf;
-        g_emulator->m_counters->m_pollSIO1 = true;
     }
 
     m_clientStatus = SIO1ClientStatus::CLIENT_STARTED;
+    g_emulator->m_counters->m_pollSIO1 = false;
     m_uvFifo = new UvFifo(address, port);
     if (m_uvFifo) {
         g_emulator->m_sio1->m_fifo.setFile(m_uvFifo);
