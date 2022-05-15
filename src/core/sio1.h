@@ -48,25 +48,14 @@ struct SIO1Registers {
 typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("dxr"), 1> FlowControlDXR;
 typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("xts"), 2> FlowControlXTS;
 typedef Protobuf::Message<TYPESTRING("FlowControl"), FlowControlDXR, FlowControlXTS> FlowControl;
-typedef Protobuf::MessageField<FlowControl, TYPESTRING("flow_control"), 2> FlowControlField;
+typedef Protobuf::MessageField<FlowControl, TYPESTRING("flow_control"), 3> FlowControlField;
 typedef Protobuf::Field<Protobuf::Bytes, TYPESTRING("data"), 1> DataTransferData;
 typedef Protobuf::Message<TYPESTRING("DataTransfer"), DataTransferData> DataTransfer;
-typedef Protobuf::MessageField<DataTransfer, TYPESTRING("data_transfer"), 1> DataTransferField;
-typedef Protobuf::Message<TYPESTRING("SIOPayload"), DataTransferField, FlowControlField> SIOPayload;
-
-//typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("dxr"), 1> FlowControlDXR;
-//typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("xts"), 2> FlowControlXTS;
-//typedef Protobuf::Message<TYPESTRING("FlowControl"), FlowControlDXR, FlowControlXTS> FlowControl;
-//typedef Protobuf::MessageField<FlowControl, TYPESTRING("flow_control"), 3> FlowControlField;
-//
-//typedef Protobuf::Field<Protobuf::Bytes, TYPESTRING("data"), 1> DataTransferData;
-//typedef Protobuf::Message<TYPESTRING("DataTransfer"), DataTransferData> DataTransfer;
-//typedef Protobuf::MessageField<DataTransfer, TYPESTRING("data_transfer"), 2> DataTransferField;
-//
-//typedef Protobuf::Field<Protobuf::UInt32, TYPESTRING("version_number"), 1> VersionNumber;
-//typedef Protobuf::Message<TYPESTRING("Version"), VersionNumber> Version;
-//typedef Protobuf::MessageField<Version, TYPESTRING("version_field"), 1> VersionField;
-//typedef Protobuf::Message<TYPESTRING("SIOPayload"), VersionField, DataTransferField, FlowControlField> SIOPayload;
+typedef Protobuf::MessageField<DataTransfer, TYPESTRING("data_transfer"), 2> DataTransferField;
+typedef Protobuf::Field<Protobuf::UInt32, TYPESTRING("version_number"), 1> VersionNumber;
+typedef Protobuf::Message<TYPESTRING("Version"), VersionNumber> Version;
+typedef Protobuf::MessageField<Version, TYPESTRING("version_field"), 1> VersionField;
+typedef Protobuf::Message<TYPESTRING("SIOPayload"), VersionField, DataTransferField, FlowControlField> SIOPayload;
 
 class SIO1 {
     /*
@@ -220,5 +209,6 @@ class SIO1 {
     Fifo m_sio1fifo;
 
     friend class SIO1Server;
+    friend class SIO1Client;
 };
 }  // namespace PCSX

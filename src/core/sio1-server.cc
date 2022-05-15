@@ -34,6 +34,7 @@ PCSX::SIO1Server::SIO1Server() : m_listener(g_system->m_eventBus) {
         if (m_serverStatus == SIO1ServerStatus::SERVER_STARTED) stopServer();
     });
 }
+
 void PCSX::SIO1Server::startServer(uv_loop_t* loop, int port) {
     if (m_serverStatus == SIO1ServerStatus::SERVER_STARTED) {
         throw std::runtime_error("Server already started");
@@ -69,4 +70,50 @@ void PCSX::SIO1Server::stopServer() {
     m_serverStatus = SIO1ServerStatus::SERVER_STOPPING;
     g_emulator->m_counters->m_pollSIO1 = false;
     m_fifoListener.stop();
+}
+
+PCSX::SIO1Client::SIO1Client() : m_listener(g_system->m_eventBus) {
+    m_listener.listen<Events::SettingsLoaded>([this](const auto& event) {
+        if (g_emulator->settings.get<Emulator::SettingDebugSettings>().get<Emulator::DebugSettings::SIO1Client>() &&
+            (m_clientStatus != SIO1ClientStatus::CLIENT_STARTED)) {
+                startClient(std::string_view(g_emulator->settings.get<Emulator::SettingDebugSettings>().get<Emulator::DebugSettings::SIO1ClientHost>().value),
+                        g_emulator->settings.get<Emulator::SettingDebugSettings>().get<Emulator::DebugSettings::SIO1ClientPort>());
+        }
+    });
+    m_listener.listen<Events::Quitting>([this](const auto& event) {
+        if (m_clientStatus == SIO1ClientStatus::CLIENT_STARTED) stopClient();
+    });
+}
+
+void PCSX::SIO1Client::startClient(std::string_view address, unsigned port) {
+    if (m_clientStatus == SIO1ClientStatus::CLIENT_STARTED) {
+        throw std::runtime_error("Client already started");
+    }
+    auto& emuSettings = PCSX::g_emulator->settings;
+    auto& debugSettings = emuSettings.get<Emulator::SettingDebugSettings>();
+    auto SIO1ModeSettings = debugSettings.get<Emulator::DebugSettings::SIO1ModeSetting>().value;
+    if (SIO1ModeSettings == Emulator::DebugSettings::SIO1Mode::Raw) {
+        g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Raw;
+        g_emulator->m_counters->m_pollSIO1 = false;
+    } else {
+        g_emulator->m_sio1->m_sio1Mode = SIO1::SIO1Mode::Protobuf;
+        g_emulator->m_counters->m_pollSIO1 = true;
+    }
+
+    m_clientStatus = SIO1ClientStatus::CLIENT_STARTED;
+    m_uvFifo = new UvFifo(address, port);
+    if (m_uvFifo) {
+        g_emulator->m_sio1->m_fifo.setFile(m_uvFifo);
+    } else {
+        g_emulator->m_sio1->m_fifo.reset();
+        stopClient();
+        m_clientStatus = SIO1ClientStatus::CLIENT_STOPPED;
+    }
+}
+
+void PCSX::SIO1Client::stopClient() {
+    m_clientStatus = SIO1ClientStatus::CLIENT_STOPPING;
+    g_emulator->m_counters->m_pollSIO1 = false;
+    g_emulator->m_sio1->m_fifo.reset();
+    m_uvFifo->close();
 }

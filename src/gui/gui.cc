@@ -1577,6 +1577,29 @@ relay information between tcp and sio1.
 See the wiki for details.)"));
         changed |=
             ImGui::InputInt(_("SIO1 Server Port"), &debugSettings.get<Emulator::DebugSettings::SIO1ServerPort>().value);
+
+        if (ImGui::Checkbox(_("Enable SIO1 Client"), &debugSettings.get<Emulator::DebugSettings::SIO1Client>().value)) {
+            changed = true;
+            const char* sioclienthost = debugSettings.get<Emulator::DebugSettings::SIO1ClientHost>().value.c_str();
+            if (debugSettings.get<Emulator::DebugSettings::SIO1Client>()) {
+                g_emulator->m_sio1Client->startClient(
+                    std::string_view(g_emulator->settings.get<Emulator::SettingDebugSettings>()
+                                         .get<Emulator::DebugSettings::SIO1ClientHost>()
+                                         .value),
+                    g_emulator->settings.get<Emulator::SettingDebugSettings>()
+                        .get<Emulator::DebugSettings::SIO1ClientPort>());
+            } else {
+                g_emulator->m_sio1Client->stopClient();
+            }
+        }
+
+        changed |= ImGui::InputText(
+            _("SIO1 Client Host"), &debugSettings.get<Emulator::DebugSettings::SIO1ClientHost>().value,
+            ImGuiInputTextFlags_CharsDecimal);
+
+        changed |=
+            ImGui::InputInt(_("SIO1 Client Port"), &debugSettings.get<Emulator::DebugSettings::SIO1ClientPort>().value);
+
         auto& currentSIO1Mode = debugSettings.get<Emulator::DebugSettings::SIO1ModeSetting>().value;
         auto currentSIO1Name = magic_enum::enum_name(currentSIO1Mode);
         if (ImGui::Button(_("Reset SIO"))) {
@@ -1599,7 +1622,6 @@ See the wiki for details.)"));
             }
             ImGui::EndCombo();
         }
-
 
         if (ImGui::CollapsingHeader(_("Advanced BIOS patching"))) {
             auto& overlays = settings.get<Emulator::SettingBiosOverlay>();

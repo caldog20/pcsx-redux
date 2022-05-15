@@ -47,4 +47,23 @@ class SIO1Server {
     UvFifoListener m_fifoListener;
 };
 
+class SIO1Client {
+  public:
+    enum class SIO1ClientStatus {
+        CLIENT_STOPPED,
+        CLIENT_STOPPING,
+        CLIENT_STARTED,
+    };
+    SIO1ClientStatus getClientStatus() { return m_clientStatus; }
+    SIO1Client();
+    void startClient(std::string_view address, unsigned port);
+    void stopClient();
+
+
+  private:
+    EventBus::Listener m_listener;
+    UvFifo* m_uvFifo;
+    SIO1ClientStatus m_clientStatus = SIO1ClientStatus::CLIENT_STOPPED;
+};
+
 }  // namespace PCSX

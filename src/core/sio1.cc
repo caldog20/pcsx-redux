@@ -26,6 +26,7 @@ PCSX::SIOPayload PCSX::SIO1::makeFCPayload() {
     sentXts = xts;
 
     return SIOPayload {
+        Version { 0x01 },
         DataTransfer {},
         FlowControl { dxr, xts },
     };
@@ -36,6 +37,7 @@ PCSX::SIOPayload PCSX::SIO1::makeDataPayload(std::string data) {
     bool xts = (m_regs.control & CR_RTSOUTLVL);
 
     return SIOPayload {
+        Version { 0x01 },
         DataTransfer {
             DataTransferData { data },
         },
