@@ -98,20 +98,18 @@ void PCSX::SIO1Client::startClient(std::string_view address, unsigned port) {
     }
 
     m_clientStatus = SIO1ClientStatus::CLIENT_STARTED;
-    g_emulator->m_counters->m_pollSIO1 = true;
-    m_uvFifo = new UvFifo(address, port);
-    if (m_uvFifo) {
-        g_emulator->m_sio1->m_fifo.setFile(m_uvFifo);
+    g_emulator->m_sio1->m_fifo.setFile(new UvFifo(address, port));
+    if (g_emulator->m_sio1->m_fifo) {
+        g_emulator->m_counters->m_pollSIO1 = true;
     } else {
-        g_emulator->m_sio1->m_fifo.reset();
+        g_emulator->m_counters->m_pollSIO1 = false;
         stopClient();
-        m_clientStatus = SIO1ClientStatus::CLIENT_STOPPED;
     }
+
 }
 
 void PCSX::SIO1Client::stopClient() {
     m_clientStatus = SIO1ClientStatus::CLIENT_STOPPING;
     g_emulator->m_counters->m_pollSIO1 = false;
     g_emulator->m_sio1->m_fifo.reset();
-    m_uvFifo->close();
 }

@@ -87,50 +87,49 @@ void PCSX::SIO1::encodeFCMessage() {
 bool PCSX::SIO1::decodeMessage() {
     if (!m_fifo) return false;
     std::string message = m_fifo->readString(messageSize);
-    if (message.size() != messageSize) {
-        m_fifo.reset();
+
+    SIOPayload payload;
+    Protobuf::InSlice inslice(reinterpret_cast<const uint8_t*>(message.data()), message.size());
+    try {
+        payload.deserialize(&inslice, 0);
+    } catch(...) {
+        // Insert some log here
         m_sio1fifo.reset();
         return false;
-    } else {
-        SIOPayload payload;
-        Protobuf::InSlice inslice(reinterpret_cast<const uint8_t*>(message.data()), message.size());
-        try {
-            payload.deserialize(&inslice, 0);
-        } catch(...) {
-            // Insert some log here
-            return false;
-        }
+    }
 
-        if (payload.get<FlowControlField>().hasData()) {
-            if (payload.get<FlowControlField>().get<FlowControlDXR>().hasData()) {
-                if (payload.get<FlowControlField>().get<FlowControlDXR>().value) {
-                    m_regs.status |= SR_DSR;
-                } else {
-                    m_regs.status &= ~SR_DSR;
-                }
+    if (payload.get<FlowControlField>().hasData()) {
+        if (payload.get<FlowControlField>().get<FlowControlDXR>().hasData()) {
+            if (payload.get<FlowControlField>().get<FlowControlDXR>().value) {
+                m_regs.status |= SR_DSR;
             } else {
                 m_regs.status &= ~SR_DSR;
             }
-            if (payload.get<FlowControlField>().get<FlowControlXTS>().hasData()) {
-                if (payload.get<FlowControlField>().get<FlowControlXTS>().value) {
-                    m_regs.status |= SR_CTS;
-                } else {
-                    m_regs.status &= ~SR_DSR;
-                }
-            } else {
-                m_regs.status &= ~SR_CTS;
-            }
         } else {
             m_regs.status &= ~SR_DSR;
+        }
+        if (payload.get<FlowControlField>().get<FlowControlXTS>().hasData()) {
+            if (payload.get<FlowControlField>().get<FlowControlXTS>().value) {
+                m_regs.status |= SR_CTS;
+            } else {
+                m_regs.status &= ~SR_DSR;
+            }
+        } else {
             m_regs.status &= ~SR_CTS;
         }
-        if (payload.get<DataTransferField>().get<DataTransferData>().hasData()) {
-            std::string byte = payload.get<DataTransferField>().get<DataTransferData>().value;
-            PCSX::Slice pushByte;
-            pushByte.acquire(std::move(byte));
+    } else {
+        m_regs.status &= ~SR_DSR;
+        m_regs.status &= ~SR_CTS;
+    }
+    if (payload.get<DataTransferField>().get<DataTransferData>().hasData()) {
+        std::string byte = payload.get<DataTransferField>().get<DataTransferData>().value;
+        PCSX::Slice pushByte;
+        pushByte.acquire(std::move(byte));
+        if (m_regs.control & CR_RTSOUTLVL) {
             m_sio1fifo.pushSlice(std::move(pushByte));
             receiveCallback();
         }
+
     }
     return true;
 }
@@ -249,7 +248,6 @@ uint32_t PCSX::SIO1::readStat32() {
 
 void PCSX::SIO1::receiveCallback() {
     updateStat();
-
     if (m_regs.control & CR_RXIRQEN) {
         if (!(m_regs.status & SR_IRQ)) {
             switch ((m_regs.control & 0x300) >> 8) {
@@ -313,7 +311,6 @@ void PCSX::SIO1::writeBaud16(uint16_t v) {
 }
 
 void PCSX::SIO1::writeCtrl16(uint16_t v) {
-    uint16_t old_ctrl = m_regs.control;
     m_regs.control = v;
 
     if (m_regs.control & CR_ACK) {
@@ -327,6 +324,7 @@ void PCSX::SIO1::writeCtrl16(uint16_t v) {
         m_regs.mode = 0;
         m_regs.control = 0;
         m_regs.baud = 0;
+        m_regs.data = 0;
         resetFifo();
 
         PCSX::g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
