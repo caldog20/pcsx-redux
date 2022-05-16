@@ -1586,7 +1586,6 @@ See the wiki for details.)"));
 
         if (ImGui::Checkbox(_("Enable SIO1 Client"), &debugSettings.get<Emulator::DebugSettings::SIO1Client>().value)) {
             changed = true;
-            const char* sioclienthost = debugSettings.get<Emulator::DebugSettings::SIO1ClientHost>().value.c_str();
             if (debugSettings.get<Emulator::DebugSettings::SIO1Client>()) {
                 g_emulator->m_sio1Client->startClient(
                     std::string_view(g_emulator->settings.get<Emulator::SettingDebugSettings>()
