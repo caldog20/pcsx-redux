@@ -111,5 +111,5 @@ void PCSX::SIO1Client::startClient(std::string_view address, unsigned port) {
 void PCSX::SIO1Client::stopClient() {
     m_clientStatus = SIO1ClientStatus::CLIENT_STOPPING;
     g_emulator->m_counters->m_pollSIO1 = false;
-    g_emulator->m_sio1->m_fifo.reset();
+    g_emulator->m_sio1->clientStopCallback();
 }
