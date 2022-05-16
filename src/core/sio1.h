@@ -30,6 +30,7 @@
 #include "core/sstate.h"
 #include "support/file.h"
 #include "support/protobuf.h"
+#include <compare>
 
 //#define SIO1_CYCLES (m_regs.baud * 8)
 #define SIO1_CYCLES (1)
@@ -84,32 +85,19 @@ class SIO1 {
         m_regs.mode = 0;
         m_regs.control = 0;
         m_regs.baud = 0;
-        checkSize = true;
+        m_decodeState = READ_SIZE;
         messageSize = 0;
         initialMessage = true;
         g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 
-    void resetFifo() {
-        m_sio1fifo.reset();
-        checkSize = true;
+    void clientStopCallback() {
+        m_decodeState = READ_SIZE;
         messageSize = 0;
         initialMessage = true;
+        m_sio1fifo.reset();
+        m_fifo.reset();
     }
-
-    // Protobuf Stuffs
-    bool decodeMessage();
-    bool sio1StateMachine();
-    void encodeDataMessage();
-    void encodeFCMessage();
-    void encodeMessage();
-    bool checkSize = true;
-    bool sentDxr;
-    bool sentXts;
-    bool initialMessage = true;
-    uint8_t messageSize = 0;
-    SIOPayload makeDataPayload(std::string data);
-    SIOPayload makeFCPayload();
 
     uint8_t readBaud8() { return m_regs.baud; }
     uint16_t readBaud16() { return m_regs.baud; }
@@ -154,10 +142,48 @@ class SIO1 {
     void writeStat32(uint32_t v);
 
     void receiveCallback();
+    void sio1StateMachine();
 
     SIO1Registers m_regs;
 
   private:
+    uint8_t messageSize = 0;
+    bool initialMessage = true;
+    SIOPayload makeDataMessage(std::string data);
+    SIOPayload makeFCMessage();
+    void decodeMessage();
+    void encodeDataMessage();
+    void encodeFCMessage();
+    void processMessage(SIOPayload payload);
+
+    struct flowControl {
+        bool dxr;
+        bool xts;
+        auto operator<=>(const flowControl&) const = default;
+    };
+
+    flowControl m_flowControl;
+    flowControl m_prevFlowControl;
+    inline void pollFlowControl() {
+        m_flowControl.dxr = (m_regs.control & CR_DTR);
+        m_flowControl.xts = (m_regs.control & CR_RTS);
+    }
+
+    inline void setDsr(bool value) {
+        if (value) {
+            m_regs.status |= SR_DSR;
+        } else {
+            m_regs.status &= ~SR_DSR;
+        }
+    }
+    inline void setCts(bool value) {
+        if (value) {
+            m_regs.status |= SR_CTS;
+        } else {
+            m_regs.status &= ~SR_CTS;
+        }
+    }
+
     enum {
         // Status Flags
         SR_TXRDY = 0x0001,
@@ -179,7 +205,7 @@ class SIO1 {
         CR_RXEN = 0x0004,
         CR_TXOUTLVL = 0x0008,
         CR_ACK = 0x0010,
-        CR_RTSOUTLVL = 0x0020,
+        CR_RTS = 0x0020,
         CR_RESET = 0x0040,  // RESET INT?
         CR_UNKNOWN = 0x0080,
         CR_RXIRQMODE = 0x0100,  // FIFO byte count, need to implement
@@ -193,10 +219,11 @@ class SIO1 {
         IRQ8_SIO = 0x100
     };
 
-    enum class decodeStatus {
-        READ_LENGTH,
-        READ_MESSAGE,
-    };
+    enum {
+        READ_SIZE,
+        READ_MESSAGE
+    } m_decodeState = READ_SIZE;
+
     inline void scheduleInterrupt(uint32_t eCycle) { g_emulator->m_cpu->scheduleInterrupt(PSXINT_SIO1, eCycle); }
 
     void updateStat();
