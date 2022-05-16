@@ -62,7 +62,6 @@ class SIO1Client {
 
   private:
     EventBus::Listener m_listener;
-    UvFifo* m_uvFifo = nullptr;
     SIO1ClientStatus m_clientStatus = SIO1ClientStatus::CLIENT_STOPPED;
 };
 
