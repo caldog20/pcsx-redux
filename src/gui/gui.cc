@@ -1597,7 +1597,9 @@ See the wiki for details.)"));
                 g_emulator->m_sio1Client->stopClient();
             }
         }
-
+        ShowHelpMarker(_(R"(This will activate a tcp client, that can connect
+to another PCSX-Redux server to relay information between tcp and sio1.
+See the wiki for details.)"));
         changed |= ImGui::InputText(
             _("SIO1 Client Host"), &debugSettings.get<Emulator::DebugSettings::SIO1ClientHost>().value,
             ImGuiInputTextFlags_CharsDecimal);
@@ -1609,9 +1611,6 @@ See the wiki for details.)"));
         auto currentSIO1Name = magic_enum::enum_name(currentSIO1Mode);
         if (ImGui::Button(_("Reset SIO"))) {
             g_emulator->m_sio1->reset();
-        }
-        if (ImGui::Button(_("Reset SIO Fifo"))) {
-            g_emulator->m_sio1->resetFifo();
         }
         if (ImGui::BeginCombo(_("SIO1Mode"), currentSIO1Name.data())) {
             for (auto v : magic_enum::enum_values<Emulator::DebugSettings::SIO1Mode>()) {
