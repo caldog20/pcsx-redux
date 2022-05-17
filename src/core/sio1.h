@@ -91,7 +91,7 @@ class SIO1 {
         g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 
-    void clientStopCallback() {
+    void stopSIO1Connection() {
         m_decodeState = READ_SIZE;
         messageSize = 0;
         initialMessage = true;

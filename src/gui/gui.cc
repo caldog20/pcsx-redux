@@ -1603,7 +1603,6 @@ See the wiki for details.)"));
         changed |= ImGui::InputText(
             _("SIO1 Client Host"), &debugSettings.get<Emulator::DebugSettings::SIO1ClientHost>().value,
             ImGuiInputTextFlags_CharsDecimal);
-
         changed |=
             ImGui::InputInt(_("SIO1 Client Port"), &debugSettings.get<Emulator::DebugSettings::SIO1ClientPort>().value);
 

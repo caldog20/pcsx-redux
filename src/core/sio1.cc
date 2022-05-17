@@ -86,9 +86,9 @@ void PCSX::SIO1::decodeMessage() {
     try {
         payload.deserialize(&inslice, 0);
     } catch(...) {
-        // Insert some log here
-        // Dropping bad connection
-        clientStopCallback();
+        g_system->message("%s", _("SIO1 TCP session closing due to unreliable connection.\nRestart SIO1 server/client and try again."));
+        g_system->log(LogClass::SIO1, "SIO1 TCP session closing due to unreliable connection\n");
+        stopSIO1Connection();
         return;
     }
     processMessage(payload);
