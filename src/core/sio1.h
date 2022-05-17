@@ -166,8 +166,8 @@ class SIO1 {
         auto operator<=>(const flowControl&) const = default;
     };
 
-    flowControl m_flowControl;
-    flowControl m_prevFlowControl;
+    flowControl m_flowControl = {};
+    flowControl m_prevFlowControl = {};
     inline void pollFlowControl() {
         m_flowControl.dxr = (m_regs.control & CR_DTR);
         m_flowControl.xts = (m_regs.control & CR_RTS);

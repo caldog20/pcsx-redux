@@ -104,6 +104,11 @@ void PCSX::SIO1Client::startClient(std::string_view address, unsigned port) {
         g_emulator->m_counters->m_pollSIO1 = false;
         stopClient();
     }
+
+    g_system->printf("%s", _("SIO1 client connecting...\n"));
+    if (!g_emulator->m_sio1->m_fifo.asA<UvFifo>()->isConnecting())
+        g_system->printf("%s", _("SIO1 client connected\n"));
+
     g_emulator->m_counters->m_pollSIO1 = true;
 }
 
@@ -111,4 +116,5 @@ void PCSX::SIO1Client::stopClient() {
     m_clientStatus = SIO1ClientStatus::CLIENT_STOPPED;
     g_emulator->m_counters->m_pollSIO1 = false;
     g_emulator->m_sio1->stopSIO1Connection();
+    g_system->printf("%s", _("SIO1 client disconnected\n"));
 }

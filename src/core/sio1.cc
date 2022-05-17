@@ -20,7 +20,6 @@
 #include "core/sio1.h"
 
 PCSX::SIOPayload PCSX::SIO1::makeFCMessage() {
-    pollFlowControl();
     m_prevFlowControl = m_flowControl;
     return SIOPayload {
         Version { SIO1_PB_VERSION },
@@ -58,10 +57,10 @@ void PCSX::SIO1::encodeDataMessage() {
 }
 
 void PCSX::SIO1::encodeFCMessage() {
-    if (fifoError()) return;
+    if (fifoError() || m_fifo->eof()) return;
+    pollFlowControl();
     if (!initialMessage) {
         if (m_flowControl == m_prevFlowControl) return;
-        initialMessage = false;
     }
 
     SIOPayload payload;
@@ -75,6 +74,11 @@ void PCSX::SIO1::encodeFCMessage() {
     Slice sliceFc;
     sliceFc.acquire(std::move(data));
     m_fifo->write(std::move(sliceFc));
+    if (initialMessage) {
+        if (!m_fifo.asA<UvFifo>()->isConnecting())
+            g_system->printf("%s", _("SIO1 client connected\n"));
+        initialMessage = false;
+    }
 }
 
 void PCSX::SIO1::decodeMessage() {
@@ -243,12 +247,13 @@ void PCSX::SIO1::receiveCallback() {
 }
 
 void PCSX::SIO1::transmitData() {
+    if (fifoError() || m_fifo->eof()) return;
     switch (m_sio1Mode) {
         case SIO1Mode::Protobuf:
             encodeDataMessage();
             break;
         case SIO1Mode::Raw:
-            if (m_fifo) m_fifo->write<uint8_t>(m_regs.data);
+            m_fifo->write<uint8_t>(m_regs.data);
             break;
     }
 
