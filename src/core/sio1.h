@@ -99,6 +99,10 @@ class SIO1 {
         m_fifo.reset();
     }
 
+    bool fifoError() {
+        return (!m_fifo || m_fifo->failed());
+    }
+
     uint8_t readBaud8() { return m_regs.baud; }
     uint16_t readBaud16() { return m_regs.baud; }
 

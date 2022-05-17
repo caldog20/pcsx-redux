@@ -41,7 +41,7 @@ PCSX::SIOPayload PCSX::SIO1::makeDataMessage(std::string data) {
 }
 
 void PCSX::SIO1::encodeDataMessage() {
-    if (!m_fifo) return;
+    if (fifoError()) return;
 
     SIOPayload payload;
     std::string txByte(1, m_regs.data);
@@ -58,7 +58,7 @@ void PCSX::SIO1::encodeDataMessage() {
 }
 
 void PCSX::SIO1::encodeFCMessage() {
-    if (!m_fifo) return;
+    if (fifoError()) return;
     if (!initialMessage) {
         if (m_flowControl == m_prevFlowControl) return;
         initialMessage = false;
@@ -78,7 +78,7 @@ void PCSX::SIO1::encodeFCMessage() {
 }
 
 void PCSX::SIO1::decodeMessage() {
-    if (!m_fifo) return;
+    if (fifoError()) return;
     std::string message = m_fifo->readString(messageSize);
 
     SIOPayload payload;
@@ -114,7 +114,7 @@ void PCSX::SIO1::processMessage(SIOPayload payload) {
 }
 
 void PCSX::SIO1::sio1StateMachine() {
-    if (!m_fifo) return;
+    if (fifoError()) return;
 
     if (m_sio1Mode == SIO1Mode::Raw) {
         if (m_fifo->size() > 0) {
