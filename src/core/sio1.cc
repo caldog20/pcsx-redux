@@ -103,10 +103,10 @@ void PCSX::SIO1::processMessage(SIOPayload payload) {
         std::string &byte = payload.get<DataTransferField>().get<DataTransferData>().value;
         PCSX::Slice pushByte;
         pushByte.acquire(std::move(byte));
-        if (m_regs.control & CR_RTS) {
+//        if (m_regs.control & CR_RTS) {
             m_sio1fifo.asA<Fifo>()->pushSlice(std::move(pushByte));
             receiveCallback();
-        }
+//        }
     }
 }
 
@@ -143,6 +143,7 @@ void PCSX::SIO1::interrupt() {
 }
 
 uint8_t PCSX::SIO1::readData8() {
+    sio1StateMachine();
     updateStat();
     if (m_sio1fifo || !m_sio1fifo->eof()) {
         if (m_regs.status & SR_RXRDY) {
@@ -179,16 +180,19 @@ uint32_t PCSX::SIO1::readData32() {
 }
 
 uint8_t PCSX::SIO1::readStat8() {
+    sio1StateMachine();
     updateStat();
     return m_regs.status;
 }
 
 uint16_t PCSX::SIO1::readStat16() {
+    sio1StateMachine();
     updateStat();
     return m_regs.status;
 }
 
 uint32_t PCSX::SIO1::readStat32() {
+    sio1StateMachine();
     updateStat();
     return m_regs.status;
 }
@@ -253,7 +257,7 @@ void PCSX::SIO1::updateStat() {
     } else {
         m_regs.status &= ~SR_RXRDY;
     }
-    psxHu32ref(0x1054) = SWAP_LEu32(m_regs.status);
+//    psxHu32ref(0x1054) = SWAP_LEu32(m_regs.status);
 }
 
 void PCSX::SIO1::writeBaud16(uint16_t v) {
