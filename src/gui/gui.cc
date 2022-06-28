@@ -98,16 +98,17 @@ void PCSX::GUI::openUrl(const std::string_view& url) {
 using json = nlohmann::json;
 
 static std::function<void(const char*)> s_imguiUserErrorFunctor = nullptr;
+static void thrower(const char* msg) { throw std::runtime_error(msg); }
 extern "C" void pcsxStaticImguiUserError(const char* msg) {
     if (s_imguiUserErrorFunctor) {
         s_imguiUserErrorFunctor(msg);
     } else {
-        throw std::runtime_error(msg);
+        thrower(msg);
     }
 }
 
 extern "C" void pcsxStaticImguiAssert(int exp, const char* msg) {
-    if (!exp) throw std::runtime_error(msg);
+    if (!exp) thrower(msg);
 }
 
 PCSX::GUI* PCSX::GUI::s_gui = nullptr;
@@ -261,13 +262,11 @@ void PCSX::GUI::init() {
         try {
             g_emulator->m_lua->load(cmd, "console", false);
             g_emulator->m_lua->pcall();
-            bool gotGLerror = false;
             for (const auto& error : m_glErrors) {
                 m_luaConsole.addError(error);
                 if (m_args.get<bool>("lua_stdout", false)) {
                     fprintf(stderr, "%s\n", error.c_str());
                 }
-                gotGLerror = true;
             }
             m_glErrors.clear();
         } catch (std::exception& e) {
@@ -284,6 +283,7 @@ void PCSX::GUI::init() {
         abort();
     }
 
+    m_listener.listen<Events::Quitting>([this](const auto& event) { saveCfg(); });
     m_listener.listen<Events::ExecutionFlow::ShellReached>([this](const auto& event) { shellReached(); });
     m_listener.listen<Events::ExecutionFlow::Pause>([this](const auto& event) {
         glfwSwapInterval(m_idleSwapInterval);
@@ -347,7 +347,6 @@ void PCSX::GUI::init() {
         io.IniFilename = nullptr;
         std::ifstream cfg("pcsx.json");
         auto& emuSettings = PCSX::g_emulator->settings;
-        auto& debugSettings = emuSettings.get<Emulator::SettingDebugSettings>();
         json j;
         bool safeMode = m_args.get<bool>("safe").value_or(false) || m_args.get<bool>("testmode").value_or(false);
         if (cfg.is_open() && !safeMode) {
@@ -387,66 +386,8 @@ void PCSX::GUI::init() {
             saveCfg();
         }
 
-        setFullscreen(m_fullscreen);
-        const auto currentTheme = emuSettings.get<Emulator::SettingGUITheme>().value;  // On boot: reload GUI theme
-        applyTheme(currentTheme);
-
-        if (emuSettings.get<Emulator::SettingMcd1>().empty()) {
-            emuSettings.get<Emulator::SettingMcd1>() = MAKEU8(u8"memcard1.mcd");
-        }
-
-        if (emuSettings.get<Emulator::SettingMcd2>().empty()) {
-            emuSettings.get<Emulator::SettingMcd2>() = MAKEU8(u8"memcard2.mcd");
-        }
-
-        PCSX::g_emulator->m_gpu->setDither(emuSettings.get<Emulator::SettingDither>());
-
-        auto argPath1 = m_args.get<std::string>("memcard1");
-        auto argPath2 = m_args.get<std::string>("memcard2");
-        if (argPath1.has_value()) emuSettings.get<Emulator::SettingMcd1>().value = argPath1.value();
-        if (argPath2.has_value()) emuSettings.get<Emulator::SettingMcd2>().value = argPath1.value();
-        PCSX::u8string path1 = emuSettings.get<Emulator::SettingMcd1>().string();
-        PCSX::u8string path2 = emuSettings.get<Emulator::SettingMcd2>().string();
-
-        PCSX::g_emulator->m_sio->LoadMcds(path1, path2);
-        auto biosCfg = m_args.get<std::string>("bios");
-        if (biosCfg.has_value()) emuSettings.get<Emulator::SettingBios>() = biosCfg.value();
-
-        g_system->activateLocale(emuSettings.get<PCSX::Emulator::SettingLocale>());
-
-        if (m_args.get<bool>("debugger")) {
-            debugSettings.get<Emulator::DebugSettings::Debug>().value = true;
-        }
-
-        if (m_args.get<bool>("no-debugger")) {
-            debugSettings.get<Emulator::DebugSettings::Debug>().value = false;
-        }
-
-        if (m_args.get<bool>("trace")) {
-            debugSettings.get<Emulator::DebugSettings::Trace>().value = true;
-        }
-
-        if (m_args.get<bool>("no-trace")) {
-            debugSettings.get<Emulator::DebugSettings::Trace>().value = false;
-        }
-
         g_system->m_eventBus->signal(Events::SettingsLoaded{safeMode});
-
-        std::filesystem::path isoToOpen = m_args.get<std::string>("iso", "");
-        if (!isoToOpen.empty()) PCSX::g_emulator->m_cdrom->setIso(new CDRIso(isoToOpen));
-        isoToOpen = m_args.get<std::string>("loadiso", "");
-        if (!isoToOpen.empty()) PCSX::g_emulator->m_cdrom->setIso(new CDRIso(isoToOpen));
-        PCSX::g_emulator->m_cdrom->check();
-        auto argPCdrv = m_args.get<bool>("pcdrv");
-        auto argPCdrvBase = m_args.get<std::string>("pcdrvbase");
-        if (argPCdrv.has_value()) {
-            debugSettings.get<Emulator::DebugSettings::PCdrv>().value = argPCdrv.value();
-        }
-        if (argPCdrvBase.has_value()) {
-            debugSettings.get<Emulator::DebugSettings::PCdrvBase>().value = argPCdrvBase.value();
-        }
-
-        if (emuSettings.get<Emulator::SettingAutoUpdate>() && !g_system->getVersion().failed()) {
+        if (emuSettings.get<PCSX::Emulator::SettingAutoUpdate>() && !g_system->getVersion().failed()) {
             m_update.downloadUpdateInfo(
                 g_system->getVersion(),
                 [this](bool success) {
@@ -456,6 +397,10 @@ void PCSX::GUI::init() {
                 },
                 g_system->getLoop());
         }
+
+        setFullscreen(m_fullscreen);
+        const auto currentTheme = emuSettings.get<Emulator::SettingGUITheme>().value;  // On boot: reload GUI theme
+        applyTheme(currentTheme);
     }
     if (!g_system->running()) glfwSwapInterval(m_idleSwapInterval);
 
@@ -468,6 +413,12 @@ void PCSX::GUI::init() {
 
     ImGui_ImplGlfw_InitForOpenGL(m_window, true);
     ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    io.SetClipboardTextFn = [](void*, const char* text) -> void { clip::set_text(text); };
+    io.GetClipboardTextFn = [](void*) -> const char* {
+        static std::string clipboard;
+        clip::get_text(clipboard);
+        return clipboard.c_str();
+    };
     m_createWindowOldCallback = platform_io.Platform_CreateWindow;
     platform_io.Platform_CreateWindow = [](ImGuiViewport* viewport) {
         s_gui->m_createWindowOldCallback(viewport);
@@ -639,7 +590,7 @@ void PCSX::GUI::startFrame() {
     glfwPollEvents();
 
     if (m_setupScreenSize) {
-        constexpr float renderRatio = 3.0f / 4.0f;
+        const float renderRatio = settings.get<WidescreenRatio>() ? 9.0f / 16.0f : 3.0f / 4.0f;
         int w, h;
 
         glfwGetFramebufferSize(m_window, &w, &h);
@@ -823,8 +774,8 @@ void PCSX::GUI::endFrame() {
     if (m_showMenu || !m_fullscreenRender || !PCSX::g_system->running()) {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu(_("File"))) {
-                showOpenIsoFileDialog = ImGui::MenuItem(_("Open ISO"));
-                if (ImGui::MenuItem(_("Close ISO"))) {
+                showOpenIsoFileDialog = ImGui::MenuItem(_("Open Disk Image"));
+                if (ImGui::MenuItem(_("Close Disk Image"))) {
                     PCSX::g_emulator->m_cdrom->setIso(new CDRIso());
                     PCSX::g_emulator->m_cdrom->check();
                 }
@@ -1244,15 +1195,30 @@ in Configuration->Emulation, restart PCSX-Redux, then try again.)"));
             }
             needFontReload |= ImGui::SliderInt(_("Main Font Size"), &settings.get<MainFontSize>().value, 8, 48);
             needFontReload |= ImGui::SliderInt(_("Mono Font Size"), &settings.get<MonoFontSize>().value, 8, 48);
-            changed |= needFontReload;
+            bool ratioChanged =
+                ImGui::Checkbox(_("Use Widescreen Aspect Ratio"), &settings.get<WidescreenRatio>().value);
+            ShowHelpMarker(_(R"(Sets the output screen ratio to 16:9 instead of 4:3.
+
+Note that this setting is NOT the popular hack
+to force games into widescreen mode, but rather an
+emulation of the fact users could change their
+TV sets to be in 16:9 mode instead of 4:3.
+
+Some games have a "wide screen" rendering setting,
+which changes the rendering of the game accordingly,
+and requires the user to change the settings of
+their TV set to match the aspect ratio of the game.)"));
+            changed |= needFontReload | ratioChanged;
             if (needFontReload) m_reloadFonts = true;
+            if (ratioChanged) m_setupScreenSize = true;
         }
         ImGui::End();
     }
 
     if (m_showSysCfg) {
         if (ImGui::Begin(_("System Configuration"), &m_showSysCfg)) {
-            changed |= ImGui::Checkbox(_("Preload ISO files"), &emuSettings.get<Emulator::SettingFullCaching>().value);
+            changed |=
+                ImGui::Checkbox(_("Preload Disk Image files"), &emuSettings.get<Emulator::SettingFullCaching>().value);
             changed |= ImGui::Checkbox(_("Enable Auto Update"), &emuSettings.get<Emulator::SettingAutoUpdate>().value);
         }
         ImGui::End();
@@ -1291,20 +1257,26 @@ Configuration -> System menu.)")));
         if (ImGui::Begin(_("Update available"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             if (m_update.canFullyApply()) {
                 ImGui::TextUnformatted((_(R"(An update is available.
-Click 'Download' to download and apply the update.
-PCSX-Redux will automatically restart to apply it.)")));
+Click 'Update' to download and apply the update.
+PCSX-Redux will automatically restart to apply it.
+
+Click 'Download' to use your browser to download
+the update and manually apply it.)")));
             } else {
                 ImGui::TextUnformatted((_(R"(An update is available.
-Click 'Download' to download it. While the update can be
+Click 'Update' to download it. While the update can be
 downloaded, it won't be applied automatically. You will
 have to install it manually, the way you previously did.
-PCSX-Redux will quit once the update is downloaded.)")));
+PCSX-Redux will quit once the update is downloaded.
+
+Click 'Download' to use your browser to download
+the update and manually apply it.)")));
             }
             ImGui::ProgressBar(m_update.progress());
             if (!m_updateDownloading) {
-                if (ImGui::Button(_("Download"))) {
+                if (ImGui::Button(_("Update"))) {
                     m_updateDownloading = true;
-                    bool started = m_update.downloadUpdate(
+                    bool started = m_update.downloadAndApplyUpdate(
                         g_system->getVersion(),
                         [this](bool success) {
                             m_updateAvailable = false;
@@ -1320,6 +1292,22 @@ PCSX-Redux will quit once the update is downloaded.)")));
                         g_system->getLoop());
                     if (!started) {
                         addNotification(_("An error has occured while downloading\nand/or applying the update."));
+                        m_updateAvailable = false;
+                        m_updateDownloading = false;
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(_("Download"))) {
+                    m_updateDownloading = true;
+                    bool started = m_update.getDownloadUrl(
+                        g_system->getVersion(),
+                        [this](std::string url) {
+                            openUrl(url);
+                            m_updateDownloading = false;
+                        },
+                        g_system->getLoop());
+                    if (!started) {
+                        addNotification(_("An error has occured while downloading the update."));
                         m_updateAvailable = false;
                         m_updateDownloading = false;
                     }
@@ -1434,6 +1422,7 @@ PCSX-Redux will quit once the update is downloaded.)")));
 bool PCSX::GUI::configure() {
     bool changed = false;
     bool selectBiosDialog = false;
+    bool showDynarecDebugWarning = false;
     bool showDynarecWarning = false;
     auto& settings = g_emulator->settings;
     auto& debugSettings = settings.get<Emulator::SettingDebugSettings>();
@@ -1460,8 +1449,9 @@ bool PCSX::GUI::configure() {
         changed |= ImGui::Checkbox(_("Decode MDEC videos in B&W"), &settings.get<Emulator::SettingBnWMdec>().value);
         if (ImGui::Checkbox(_("Dynarec CPU"), &settings.get<Emulator::SettingDynarec>().value)) {
             changed = true;
+            showDynarecWarning = true;
             if (debugSettings.get<PCSX::Emulator::DebugSettings::Debug>() && settings.get<Emulator::SettingDynarec>()) {
-                showDynarecWarning = true;
+                showDynarecDebugWarning = true;
             }
         }
 
@@ -1471,10 +1461,15 @@ however it doesn't play nicely with the debugger.
 Changing this setting requires a reboot to take effect.
 The dynarec core isn't available for all CPUs, so
 this setting may not have any effect for you.)"));
-        changed |= ImGui::Checkbox(_("8MB"), &settings.get<Emulator::Setting8MB>().value);
+        bool memChanged = ImGui::Checkbox(_("8MB"), &settings.get<Emulator::Setting8MB>().value);
         ShowHelpMarker(_(R"(Emulates an installed 8MB system,
 instead of the normal 2MB. Useful for working
 with development binaries and games.)"));
+
+        if (memChanged) {
+            changed = true;
+            g_emulator->m_mem->setLuts();
+        }
 
         {
             static const char* types[] = {"Auto", "NTSC", "PAL"};
@@ -1512,7 +1507,7 @@ faster by not displaying the logo.)"));
         if (ImGui::Checkbox(_("Enable Debugger"), &debugSettings.get<Emulator::DebugSettings::Debug>().value)) {
             changed = true;
             if (debugSettings.get<PCSX::Emulator::DebugSettings::Debug>() && settings.get<Emulator::SettingDynarec>()) {
-                showDynarecWarning = true;
+                showDynarecDebugWarning = true;
             }
         }
 
@@ -1664,10 +1659,19 @@ See the wiki for details.)"));
         }
     }
 
-    if (showDynarecWarning) {
+    if (showDynarecDebugWarning && showDynarecWarning) {
         addNotification(R"(Debugger and dynarec enabled at the same time.
 Consider turning either one off, otherwise
-debugging features may not work)");
+debugging features may not work. Additionally,
+changing the dynarec option requires a restart
+of the emulator to take effect.)");
+    } else if (showDynarecDebugWarning) {
+        addNotification(R"(Debugger and dynarec enabled at the same time.
+Consider turning either one off, otherwise
+debugging features may not work.)");
+    } else if (showDynarecWarning) {
+        addNotification(R"(Toggling the Dynarec option requires a restart
+of the emulator to take effect.)");
     }
     return changed;
 }
@@ -1747,6 +1751,14 @@ bool PCSX::GUI::about() {
             if (ImGui::BeginTabItem(_("Version"))) {
                 auto& version = g_system->getVersion();
                 if (version.failed()) {
+                    ImGui::BeginDisabled();
+                }
+                if (ImGui::Button(_("Copy to clipboard"))) {
+                    clip::set_text(fmt::format("Version: {}\nChangeset: {}\nDate & time: {:%Y-%m-%d %H:%M:%S}",
+                                               version.version, version.changeset, fmt::localtime(version.timestamp)));
+                }
+                if (version.failed()) {
+                    ImGui::EndDisabled();
                     ImGui::TextUnformatted(_("No version information.\n\nProbably built from source."));
                 } else {
                     ImGui::Text(_("Version: %s"), version.version.c_str());

@@ -87,6 +87,7 @@ local C = ffi.load 'PCSX'
 local function garbageCollect(bp)
     C.removeBreakpoint(bp._wrapper)
     bp._invokercb:free()
+    setmetatable(bp, {})
 end
 
 local meta = { __gc = garbageCollect }
@@ -182,9 +183,7 @@ PCSX = {
         local slice = C.createSaveState()
         return Support.File._createSliceWrapper(slice)
     end,
-    loadSaveState = function(slice)
-        C.loadSaveState(slice._wrapper)
-    end,
+    loadSaveState = function(slice) C.loadSaveState(slice._wrapper) end,
 }
 
 print = function(...) printLike(function(s) C.luaMessage(s, false) end, ...) end

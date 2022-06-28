@@ -394,6 +394,7 @@ void PCSX::Widgets::Assembly::Offset(uint32_t addr, int size) {
 }
 
 void PCSX::Widgets::Assembly::draw(GUI* gui, psxRegisters* registers, Memory* memory, const char* title) {
+    auto& cpu = g_emulator->m_cpu;
     m_registers = registers;
     m_memory = memory;
     ImGui::SetNextWindowPos(ImVec2(10, 30), ImGuiCond_FirstUseEver);
@@ -410,6 +411,9 @@ void PCSX::Widgets::Assembly::draw(GUI* gui, psxRegisters* registers, Memory* me
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu(_("File"))) {
             openSymbolsDialog = ImGui::MenuItem(_("Load symbols map"));
+            if (ImGui::MenuItem(_("Reset symbols map"))) {
+                cpu->m_symbols.clear();
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(_("Debug"))) {
@@ -491,7 +495,7 @@ void PCSX::Widgets::Assembly::draw(GUI* gui, psxRegisters* registers, Memory* me
     ImGui::SameLine();
     DButton(_("Step Out"), !g_system->running(), [&]() mutable { g_emulator->m_debug->stepOut(); });
     ImGui::SameLine();
-    ImGui::Text(_("In ISR: %s"), g_emulator->m_cpu->m_inISR ? "yes" : "no");
+    ImGui::Text(_("In ISR: %s"), cpu->m_inISR ? "yes" : "no");
 
     gui->useMonoFont();
 
@@ -652,29 +656,39 @@ void PCSX::Widgets::Assembly::draw(GUI* gui, psxRegisters* registers, Memory* me
                 }
                 ImGui::Text("  %s:%8.8x %c%c%c%c %8.8x: ", section, dispAddr, tc(b[0]), tc(b[1]), tc(b[2]), tc(b[3]),
                             code);
+                auto toggleBP = [&]() {
+                    if (hasBP) {
+                        g_emulator->m_debug->removeBreakpoint(currentBP);
+                    } else {
+                        g_emulator->m_debug->addBreakpoint(dispAddr, Debug::BreakpointType::Exec, 4, _("GUI"));
+                    }
+                };
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+                    toggleBP();
+                }
                 std::string contextMenuTitle = "assembly address menu ";
                 contextMenuTitle += dispAddr;
                 if (ImGui::BeginPopupContextItem(contextMenuTitle.c_str())) {
-                    DButton(_("Run to cursor"), !PCSX::g_system->running(), [&]() mutable {
+                    if (ImGui::MenuItem(_("Copy Address"))) {
+                        char fmtAddr[10];
+                        std::snprintf(fmtAddr, sizeof(fmtAddr), "%8.8x", dispAddr);
+                        ImGui::SetClipboardText(fmtAddr);
+                    }
+                    if (ImGui::MenuItem(_("Go to in Memory Editor"))) {
+                        jumpToMemory(dispAddr, 4);
+                    }
+                    if (ImGui::MenuItem(_("Run to Cursor"), nullptr, false, !PCSX::g_system->running())) {
                         g_emulator->m_debug->addBreakpoint(
                             dispAddr, Debug::BreakpointType::Exec, 4, _("GUI"),
                             [](const Debug::Breakpoint* bp, uint32_t address, unsigned width, const char* cause) {
                                 g_system->pause();
                                 return false;
                             });
-                        ImGui::CloseCurrentPopup();
                         g_system->resume();
-                    });
-                    DButton(_("Set Breakpoint here"), !hasBP, [&]() mutable {
-                        g_emulator->m_debug->addBreakpoint(dispAddr, Debug::BreakpointType::Exec, 4, _("GUI"));
-                        ImGui::CloseCurrentPopup();
-                        hasBP = true;
-                    });
-                    DButton(_("Remove breakpoint from here"), hasBP, [&]() mutable {
-                        g_emulator->m_debug->removeBreakpoint(currentBP);
-                        ImGui::CloseCurrentPopup();
-                        hasBP = false;
-                    });
+                    }
+                    if (ImGui::MenuItem(_("Toggle Breakpoint"))) {
+                        toggleBP();
+                    }
                     ImGui::EndPopup();
                 }
                 if (skipNext && m_pseudoFilling) {
@@ -794,7 +808,7 @@ void PCSX::Widgets::Assembly::draw(GUI* gui, psxRegisters* registers, Memory* me
     ImGui::EndChild();
     ImGui::PopFont();
     if (m_jumpToPC.has_value()) {
-        std::snprintf(m_jumpAddressString, 19, "%08x", m_jumpToPC);
+        std::snprintf(m_jumpAddressString, 19, "%08x", m_jumpToPC.value());
     }
     ImGui::PushItemWidth(10 * glyphWidth + style.FramePadding.x);
     if (ImGui::InputText(_("Address"), m_jumpAddressString, 20,
@@ -863,7 +877,7 @@ void PCSX::Widgets::Assembly::draw(GUI* gui, psxRegisters* registers, Memory* me
                 uint32_t address = strtoul(addressString.c_str(), &endPtr, 16);
                 bool addressValid = addressString[0] && !*endPtr;
                 if (!addressValid) continue;
-                m_symbols[address] = name;
+                cpu->m_symbols[address] = name;
             }
         }
     }
@@ -906,9 +920,10 @@ void PCSX::Widgets::Assembly::draw(GUI* gui, psxRegisters* registers, Memory* me
 }
 
 std::list<std::string> PCSX::Widgets::Assembly::findSymbol(uint32_t addr) {
+    auto& cpu = g_emulator->m_cpu;
     std::list<std::string> ret;
-    auto symbol = m_symbols.find(addr);
-    if (symbol != m_symbols.end()) ret.emplace_back(symbol->second);
+    auto symbol = cpu->m_symbols.find(addr);
+    if (symbol != cpu->m_symbols.end()) ret.emplace_back(symbol->second);
 
     if (!m_symbolsCachesValid) rebuildSymbolsCaches();
     auto elfSymbol = m_elfSymbolsCache.find(addr);
@@ -918,8 +933,9 @@ std::list<std::string> PCSX::Widgets::Assembly::findSymbol(uint32_t addr) {
 }
 
 void PCSX::Widgets::Assembly::rebuildSymbolsCaches() {
+    auto& cpu = g_emulator->m_cpu;
     m_symbolsCache.clear();
-    for (auto& symbol : m_symbols) {
+    for (auto& symbol : cpu->m_symbols) {
         m_symbolsCache.insert(std::pair(symbol.second, symbol.first));
     }
     m_symbolsCachesValid = true;
