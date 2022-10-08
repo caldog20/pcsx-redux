@@ -37,15 +37,16 @@ namespace PCSX {
 
 struct SIO1Registers {
     uint32_t data;
-    uint32_t status;
+    uint16_t status;
     uint16_t mode;
     uint16_t control;
     uint16_t baud;
 };
 
-typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("dxr"), 1> FlowControlDXR;
-typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("xts"), 2> FlowControlXTS;
-typedef Protobuf::Message<TYPESTRING("FlowControl"), FlowControlDXR, FlowControlXTS> FlowControl;
+//typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("dxr"), 1> FlowControlDXR;
+//typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("xts"), 2> FlowControlXTS;
+typedef Protobuf::Field<Protobuf::UInt16, TYPESTRING("flow_control_reg"), 1> FlowControlReg;
+typedef Protobuf::Message<TYPESTRING("FlowControl"), FlowControlReg> FlowControl;
 typedef Protobuf::MessageField<FlowControl, TYPESTRING("flow_control"), 2> FlowControlField;
 typedef Protobuf::Field<Protobuf::Bytes, TYPESTRING("data"), 1> DataTransferData;
 typedef Protobuf::Message<TYPESTRING("DataTransfer"), DataTransferData> DataTransfer;
@@ -204,16 +205,21 @@ class SIO1 {
     }
 
     inline void setDsr(bool value) {
+
         if (value) {
             m_regs.status |= SR_DSR;
+//            printf("Setting DSR to 1\n");
         } else {
+//            printf("Setting DSR to 0\n");
             m_regs.status &= ~SR_DSR;
         }
     }
     inline void setCts(bool value) {
         if (value) {
+//            printf("Setting CTS to 1\n");
             m_regs.status |= SR_CTS;
         } else {
+//            printf("Setting CTS to 0\n");
             m_regs.status &= ~SR_CTS;
         }
     }
