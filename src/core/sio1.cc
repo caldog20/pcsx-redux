@@ -130,13 +130,14 @@ void PCSX::SIO1::sio1StateMachine() {
     if (fifoError()) return;
         switch (m_decodeState) {
             case READ_SIZE:
-                if (m_fifo->size() >= 1) {
+                while (m_fifo->size() >= 1) {
                     messageSize = m_fifo->byte();
                     m_decodeState = READ_MESSAGE;
                     case READ_MESSAGE:
                         if (m_fifo->size() < messageSize) return;
                         decodeMessage();
                         m_decodeState = READ_SIZE;
+                        return;
                 }
         }
 }
@@ -311,7 +312,14 @@ void PCSX::SIO1::writeCtrl16(uint16_t v) {
         }
     }
 
-    if (m_sio1Mode == SIO1Mode::Protobuf) sendFlowControlMessage();
+//    if (m_sio1Mode == SIO1Mode::Protobuf) sendFlowControlMessage();
+    if (g_emulator->m_sio1Server->getServerStatus() == SIO1Server::SIO1ServerStatus::SERVER_STARTED) {
+        sendFlowControlMessage();
+        sio1StateMachine();
+    } else {
+        sio1StateMachine();
+        sendFlowControlMessage();
+    }
 }
 
 void PCSX::SIO1::writeData8(uint8_t v) {
