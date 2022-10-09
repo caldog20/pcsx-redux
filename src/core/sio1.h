@@ -128,47 +128,47 @@ class SIO1 {
         }
     }
 
-    uint8_t readBaud8() { return m_regs.baud; }
+//    uint8_t readBaud8() { return m_regs.baud; }
     uint16_t readBaud16() { return m_regs.baud; }
 
-    uint8_t readCtrl8() { return m_regs.control; }
-    uint16_t readCtrl16() { return m_regs.control; }
+//    uint8_t readCtrl8() { return m_regs.control; }
+    uint16_t readCtrl16() {
+        printf("Read Ctrl 16: %x\n", m_regs.control);
+        return m_regs.control; }
 
     uint8_t readData8();
     uint16_t readData16();
     uint32_t readData32();
 
-    uint8_t readMode8() { return m_regs.mode; }
+//    uint8_t readMode8() { return m_regs.mode; }
     uint16_t readMode16() { return m_regs.mode; }
 
-    uint8_t readStat8();
+//    uint8_t readStat8();
     uint16_t readStat16();
     uint32_t readStat32();
 
-    void writeBaud8(uint8_t v) { writeBaud16(v); }
+//    void writeBaud8(uint8_t v) { writeBaud16(v); }
     void writeBaud16(uint16_t v);
 
-    void writeCtrl8(uint8_t v) { writeCtrl16(v); }
+//    void writeCtrl8(uint8_t v) { writeCtrl16(v); }
     void writeCtrl16(uint16_t v);
 
     void writeData8(uint8_t v);
     void writeData16(uint16_t v) {
-        writeData8(v);
-        writeData8(v >> 8);
+        writeData8(v & 0xff);
     }
     void writeData32(uint32_t v) {
-        writeData8(v);
-        writeData8(v >> 8);
-        writeData8(v >> 16);
-        writeData8(v >> 24);
+        writeData8(v & 0xff);
     }
 
-    void writeMode8(uint8_t v) { writeMode16(v); };
+//    void writeMode8(uint8_t v) { writeMode16(v); };
     void writeMode16(uint16_t v);
 
-    void writeStat8(uint8_t v) { writeStat32(v); }
-    void writeStat16(uint16_t v) { writeStat32(v); }
-    void writeStat32(uint32_t v);
+//    void writeStat8(uint8_t v) { writeStat32(v); }
+    void writeStat16(uint16_t v);
+    void writeStat32(uint32_t v) {
+        writeStat16(v);
+    };
 
     void receiveCallback();
     void sio1StateMachine();
