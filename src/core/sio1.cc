@@ -119,7 +119,7 @@ void PCSX::SIO1::processMessage(SIOPayload payload) {
 void PCSX::SIO1::sio1StateMachine(bool data) {
     if (fifoError()) return;
     // FIXME
-    if (!(m_regs.control & CR_TXEN) && !(m_regs.control & CR_RXEN)) return;
+//    if (!(m_regs.control & CR_TXEN) && !(m_regs.control & CR_RXEN)) return;
     if (g_emulator->m_sio1Server->getServerStatus() == SIO1Server::SIO1ServerStatus::SERVER_STARTED) {
         if (data) {
             sendDataMessage();
@@ -130,19 +130,19 @@ void PCSX::SIO1::sio1StateMachine(bool data) {
         messageSize = m_fifo->byte();
         while (m_fifo->size() < messageSize) {}
     } else if (g_emulator->m_sio1Client->getClientStatus() == SIO1Client::SIO1ClientStatus::CLIENT_STARTED) {
-        if (slaveDelay) {
-            uint16_t ctrl = CR_DTR | CR_RTS;
-            SIOPayload payload = {
-                DataTransfer{},
-                FlowControl{ctrl},
-            };
-            for (int i = 0; i < 4; ++i) {
-                std::string message = encodeMessage(payload);
-                transmitMessage(std::move(message));
-            }
-            slaveDelay = false;
-            return;
-        }
+//        if (slaveDelay) {
+//            uint16_t ctrl = CR_DTR | CR_RTS;
+//            SIOPayload payload = {
+//                DataTransfer{},
+//                FlowControl{ctrl},
+//            };
+//            for (int i = 0; i < 4; ++i) {
+//                std::string message = encodeMessage(payload);
+//                transmitMessage(std::move(message));
+//            }
+//            slaveDelay = false;
+//            return;
+//        }
         while (m_fifo->size() == 0) {}
         messageSize = m_fifo->byte();
         while (m_fifo->size() < messageSize) {}
