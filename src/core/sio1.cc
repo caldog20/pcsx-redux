@@ -118,18 +118,17 @@ void PCSX::SIO1::processMessage(SIOPayload payload) {
 
 void PCSX::SIO1::sio1StateMachine(bool data) {
     if (fifoError()) return;
-    if (!(m_regs.control & CR_TXEN) || !(m_regs.control & CR_RXEN)) return;
+    // FIXME
+    if (!(m_regs.control & CR_TXEN) && !(m_regs.control & CR_RXEN)) return;
     if (g_emulator->m_sio1Server->getServerStatus() == SIO1Server::SIO1ServerStatus::SERVER_STARTED) {
         if (data) {
             sendDataMessage();
         } else {
             sendFlowControlMessage();
         }
-        if (m_fifo->size() == 0) return;
+        while (m_fifo->size() == 0) {}
         messageSize = m_fifo->byte();
-        printf("message size: %d\n",messageSize);
-        while (m_fifo->size() < messageSize) {printf("Awaiting full message\n");}
-        decodeMessage();
+        while (m_fifo->size() < messageSize) {}
     } else if (g_emulator->m_sio1Client->getClientStatus() == SIO1Client::SIO1ClientStatus::CLIENT_STARTED) {
         if (slaveDelay) {
             uint16_t ctrl = CR_DTR | CR_RTS;
@@ -138,30 +137,67 @@ void PCSX::SIO1::sio1StateMachine(bool data) {
                 FlowControl{ctrl},
             };
             for (int i = 0; i < 4; ++i) {
-                if (m_fifo->size() > 0)
-                    Slice read = m_fifo->read(m_fifo->size());
                 std::string message = encodeMessage(payload);
                 transmitMessage(std::move(message));
             }
             slaveDelay = false;
             return;
         }
-
-        if (m_fifo->size() == 0) {
-            if (data) {
-                sendDataMessage();
-            } else {
-                sendFlowControlMessage();
-            }
-            return;
-        }
-
+        while (m_fifo->size() == 0) {}
         messageSize = m_fifo->byte();
-        printf("message size: %d\n",messageSize);
-        while (m_fifo->size() < messageSize) {printf("Awaiting full message\n");}
-        decodeMessage();
-
+        while (m_fifo->size() < messageSize) {}
+        if (data) {
+            sendDataMessage();
+        } else {
+            sendFlowControlMessage();
+        }
     }
+    decodeMessage();
+
+//    if (!(m_regs.control & CR_TXEN) || !(m_regs.control & CR_RXEN)) return;
+//    if (g_emulator->m_sio1Server->getServerStatus() == SIO1Server::SIO1ServerStatus::SERVER_STARTED) {
+//        if (data) {
+//            sendDataMessage();
+//        } else {
+//            sendFlowControlMessage();
+//        }
+//        if (m_fifo->size() == 0) return;
+//        messageSize = m_fifo->byte();
+//        printf("message size: %d\n",messageSize);
+//        while (m_fifo->size() < messageSize) {printf("Awaiting full message\n");}
+//        decodeMessage();
+//    } else if (g_emulator->m_sio1Client->getClientStatus() == SIO1Client::SIO1ClientStatus::CLIENT_STARTED) {
+//        if (slaveDelay) {
+//            uint16_t ctrl = CR_DTR | CR_RTS;
+//            SIOPayload payload = {
+//                DataTransfer{},
+//                FlowControl{ctrl},
+//            };
+//            for (int i = 0; i < 4; ++i) {
+//                if (m_fifo->size() > 0)
+//                    Slice read = m_fifo->read(m_fifo->size());
+//                std::string message = encodeMessage(payload);
+//                transmitMessage(std::move(message));
+//            }
+//            slaveDelay = false;
+//            return;
+//        }
+//
+//        if (m_fifo->size() == 0) {
+//            if (data) {
+//                sendDataMessage();
+//            } else {
+//                sendFlowControlMessage();
+//            }
+//            return;
+//        }
+//
+//        messageSize = m_fifo->byte();
+//        printf("message size: %d\n",messageSize);
+//        while (m_fifo->size() < messageSize) {printf("Awaiting full message\n");}
+//        decodeMessage();
+
+//    }
 }
 
 void PCSX::SIO1::interrupt() {
@@ -245,6 +281,7 @@ void PCSX::SIO1::transmitData() {
         case SIO1Mode::Protobuf:
             if (fifoError()) return;
             sio1StateMachine(true);
+//            sendDataMessage();
             break;
         case SIO1Mode::Raw:
             if (!m_sio1fifo || m_sio1fifo->eof()) return;
@@ -296,9 +333,9 @@ void PCSX::SIO1::writeCtrl16(uint16_t v) {
         m_regs.control = 0;
         m_regs.baud = 0;
 //        m_regs.data = 0;
-//        if (m_sio1fifo.isA<Fifo>()) {
-//            m_sio1fifo.asA<Fifo>()->reset();
-//        }
+        if (m_sio1fifo.isA<Fifo>()) {
+            m_sio1fifo.asA<Fifo>()->reset();
+        }
 
         PCSX::g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }

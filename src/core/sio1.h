@@ -76,6 +76,7 @@ class SIO1 {
     void poll() {
         if (fifoError()) return;
         if (m_sio1Mode == SIO1Mode::Protobuf) {
+            // FIXME
             sio1StateMachine();
         } else {
             if (m_sio1fifo->size() >= 1) {
