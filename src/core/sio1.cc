@@ -60,20 +60,10 @@ void PCSX::SIO1::sendDataMessage() {
 void PCSX::SIO1::sendFlowControlMessage() {
     if (fifoError()) return;
 
-//    pollFlowControl();
-//    if (!initialMessage) {
-//        if (m_flowControl == m_prevFlowControl) return;
-//    }
-//    m_prevFlowControl = m_flowControl;
-
     SIOPayload payload = makeFlowControlMessage();
     std::string message = encodeMessage(payload);
     transmitMessage(std::move(message));
 
-//    if (initialMessage) {
-//        if (!connecting() && !fifoError()) g_system->printf("%s", _("SIO1 client connected\n"));
-//        initialMessage = false;
-//    }
 }
 
 void PCSX::SIO1::decodeMessage() {
@@ -126,20 +116,52 @@ void PCSX::SIO1::processMessage(SIOPayload payload) {
     }
 }
 
-void PCSX::SIO1::sio1StateMachine() {
+void PCSX::SIO1::sio1StateMachine(bool data) {
     if (fifoError()) return;
-        switch (m_decodeState) {
-            case READ_SIZE:
-                while (m_fifo->size() >= 1) {
-                    messageSize = m_fifo->byte();
-                    m_decodeState = READ_MESSAGE;
-                    case READ_MESSAGE:
-                        if (m_fifo->size() < messageSize) return;
-                        decodeMessage();
-                        m_decodeState = READ_SIZE;
-                        return;
-                }
+    if (!(m_regs.control & CR_TXEN) || !(m_regs.control & CR_RXEN)) return;
+    if (g_emulator->m_sio1Server->getServerStatus() == SIO1Server::SIO1ServerStatus::SERVER_STARTED) {
+        if (data) {
+            sendDataMessage();
+        } else {
+            sendFlowControlMessage();
         }
+        if (m_fifo->size() == 0) return;
+        messageSize = m_fifo->byte();
+        printf("message size: %d\n",messageSize);
+        while (m_fifo->size() < messageSize) {printf("Awaiting full message\n");}
+        decodeMessage();
+    } else if (g_emulator->m_sio1Client->getClientStatus() == SIO1Client::SIO1ClientStatus::CLIENT_STARTED) {
+        if (slaveDelay) {
+            uint16_t ctrl = CR_DTR | CR_RTS;
+            SIOPayload payload = {
+                DataTransfer{},
+                FlowControl{ctrl},
+            };
+            for (int i = 0; i < 4; ++i) {
+                if (m_fifo->size() > 0)
+                    Slice read = m_fifo->read(m_fifo->size());
+                std::string message = encodeMessage(payload);
+                transmitMessage(std::move(message));
+            }
+            slaveDelay = false;
+            return;
+        }
+
+        if (m_fifo->size() == 0) {
+            if (data) {
+                sendDataMessage();
+            } else {
+                sendFlowControlMessage();
+            }
+            return;
+        }
+
+        messageSize = m_fifo->byte();
+        printf("message size: %d\n",messageSize);
+        while (m_fifo->size() < messageSize) {printf("Awaiting full message\n");}
+        decodeMessage();
+
+    }
 }
 
 void PCSX::SIO1::interrupt() {
@@ -159,54 +181,36 @@ void PCSX::SIO1::interrupt() {
 }
 
 uint8_t PCSX::SIO1::readData8() {
-    printf("Read Data 8\n");
-    sio1StateMachine();
     if (m_sio1fifo || !m_sio1fifo->eof()) {
-//        if (m_regs.status & SR_RXRDY) {
             m_regs.data = m_sio1fifo->byte();
-//            psxHu8(0x1050) = m_regs.data;
-//        }
     }
-
+    sio1StateMachine();
     return m_regs.data;
 }
 
 uint16_t PCSX::SIO1::readData16() {
-    sio1StateMachine();
     if (m_sio1fifo || !m_sio1fifo->eof()) {
-//        if (m_regs.status & SR_RXRDY) {
-            m_sio1fifo->read(&m_regs.data, 2);
-//            psxHu16(0x1050) = m_regs.data;
-//        }
+        m_sio1fifo->read(&m_regs.data, 2);
     }
+    sio1StateMachine();
     return m_regs.data;
 }
 
 uint32_t PCSX::SIO1::readData32() {
-    sio1StateMachine();
     if (m_sio1fifo || !m_sio1fifo->eof()) {
-//        if (m_regs.status & SR_RXRDY) {
-            m_sio1fifo->read(&m_regs.data, 4);
-//            psxHu32(0x1050) = m_regs.data;
-//        }
+        m_sio1fifo->read(&m_regs.data, 4);
     }
+    sio1StateMachine();
     return m_regs.data;
 }
 
-//uint8_t PCSX::SIO1::readStat8() {
-//    updateStat();
-//    return m_regs.status;
-//}
-
 uint16_t PCSX::SIO1::readStat16() {
-//    sio1StateMachine();
-    updateStat();
+    sio1StateMachine();
     return m_regs.status;
 }
 
 uint32_t PCSX::SIO1::readStat32() {
-//    sio1StateMachine();
-    updateStat();
+    sio1StateMachine();
     return m_regs.status;
 }
 
@@ -240,7 +244,7 @@ void PCSX::SIO1::transmitData() {
     switch (m_sio1Mode) {
         case SIO1Mode::Protobuf:
             if (fifoError()) return;
-            sendDataMessage();
+            sio1StateMachine(true);
             break;
         case SIO1Mode::Raw:
             if (!m_sio1fifo || m_sio1fifo->eof()) return;
@@ -279,7 +283,6 @@ void PCSX::SIO1::writeBaud16(uint16_t v) {
 void PCSX::SIO1::writeCtrl16(uint16_t v) {
     uint16_t control_backup = m_regs.control;
     m_regs.control = v;
-    printf("Write Ctrl 16: %x\n", m_regs.control);
 
     if (m_regs.control & CR_ACK) {
         m_regs.control &= ~CR_ACK;
@@ -313,33 +316,19 @@ void PCSX::SIO1::writeCtrl16(uint16_t v) {
     }
 
 //    if (m_sio1Mode == SIO1Mode::Protobuf) sendFlowControlMessage();
-    if (g_emulator->m_sio1Server->getServerStatus() == SIO1Server::SIO1ServerStatus::SERVER_STARTED) {
-        sendFlowControlMessage();
-        sio1StateMachine();
-    } else {
-        sio1StateMachine();
-        sendFlowControlMessage();
-    }
+    sio1StateMachine();
 }
 
 void PCSX::SIO1::writeData8(uint8_t v) {
     m_regs.data = v;
-    printf("Write Data 8\n");
-    updateStat();
-    if (g_emulator->m_sio1Server->getServerStatus() == SIO1Server::SIO1ServerStatus::SERVER_STARTED) {
-        transmitData();
-        sio1StateMachine();
-    } else {
-        sio1StateMachine();
-        transmitData();
-    }
-
+    transmitData();
 }
 
 void PCSX::SIO1::writeMode16(uint16_t v) { m_regs.mode = v; }
 
 void PCSX::SIO1::writeStat16(uint16_t v) {
     m_regs.status = v;
+    sio1StateMachine();
 }
 
 void PCSX::SIO1::calcCycleCount() {

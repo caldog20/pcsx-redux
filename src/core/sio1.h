@@ -94,12 +94,14 @@ class SIO1 {
         m_decodeState = READ_SIZE;
         messageSize = 0;
         initialMessage = true;
+        slaveDelay = true;
         g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 
     void stopSIO1Connection() {
         m_decodeState = READ_SIZE;
         messageSize = 0;
+        slaveDelay = true;
         initialMessage = true;
         if (m_sio1fifo.isA<Fifo>()) {
             m_sio1fifo.asA<Fifo>()->reset();
@@ -128,29 +130,25 @@ class SIO1 {
         }
     }
 
-//    uint8_t readBaud8() { return m_regs.baud; }
-    uint16_t readBaud16() { return m_regs.baud; }
+    uint16_t readBaud16() {
+        sio1StateMachine();
+        return m_regs.baud; }
 
-//    uint8_t readCtrl8() { return m_regs.control; }
     uint16_t readCtrl16() {
-        printf("Read Ctrl 16: %x\n", m_regs.control);
+        sio1StateMachine();
         return m_regs.control; }
 
     uint8_t readData8();
     uint16_t readData16();
     uint32_t readData32();
 
-//    uint8_t readMode8() { return m_regs.mode; }
     uint16_t readMode16() { return m_regs.mode; }
 
-//    uint8_t readStat8();
     uint16_t readStat16();
     uint32_t readStat32();
 
-//    void writeBaud8(uint8_t v) { writeBaud16(v); }
     void writeBaud16(uint16_t v);
 
-//    void writeCtrl8(uint8_t v) { writeCtrl16(v); }
     void writeCtrl16(uint16_t v);
 
     void writeData8(uint8_t v);
@@ -161,22 +159,21 @@ class SIO1 {
         writeData8(v & 0xff);
     }
 
-//    void writeMode8(uint8_t v) { writeMode16(v); };
     void writeMode16(uint16_t v);
 
-//    void writeStat8(uint8_t v) { writeStat32(v); }
     void writeStat16(uint16_t v);
     void writeStat32(uint32_t v) {
         writeStat16(v);
     };
 
     void receiveCallback();
-    void sio1StateMachine();
+    void sio1StateMachine(bool data = false);
 
     SIO1Registers m_regs;
 
   private:
     uint8_t messageSize = 0;
+    bool slaveDelay = true;
     uint64_t m_cycleCount = 2352;  // Default to cycles for 115200 baud
     uint64_t m_baudRate = 115200;  // Default to 115200 baud
     bool initialMessage = true;
@@ -190,36 +187,18 @@ class SIO1 {
     void processMessage(SIOPayload payload);
     void calcCycleCount();
 
-    struct flowControl {
-        bool dxr;
-        bool xts;
-        auto operator<=>(const flowControl &) const = default;
-    };
-
-    flowControl m_flowControl = {};
-    flowControl m_prevFlowControl = {};
-
-    inline void pollFlowControl() {
-        m_flowControl.dxr = (m_regs.control & CR_DTR);
-        m_flowControl.xts = (m_regs.control & CR_RTS);
-    }
-
     inline void setDsr(bool value) {
 
         if (value) {
             m_regs.status |= SR_DSR;
-//            printf("Setting DSR to 1\n");
         } else {
-//            printf("Setting DSR to 0\n");
             m_regs.status &= ~SR_DSR;
         }
     }
     inline void setCts(bool value) {
         if (value) {
-//            printf("Setting CTS to 1\n");
             m_regs.status |= SR_CTS;
         } else {
-//            printf("Setting CTS to 0\n");
             m_regs.status &= ~SR_CTS;
         }
     }
