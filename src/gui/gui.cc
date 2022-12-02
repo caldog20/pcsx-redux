@@ -25,14 +25,18 @@
 
 // And only then we can load the rest
 #define GLFW_INCLUDE_NONE
+#define NANOVG_GLES3_IMPLEMENTATION
 #include <GL/gl3w.h>
 #include <GLFW/glfw3.h>
 #include <assert.h>
 
 #include <algorithm>
+#include <cmath>
 #include <ctime>
+#include <exception>
 #include <fstream>
 #include <iomanip>
+#include <numbers>
 #include <type_traits>
 #include <unordered_set>
 
@@ -66,7 +70,11 @@
 #include "lua/glffi.h"
 #include "lua/luawrapper.h"
 #include "magic_enum/include/magic_enum.hpp"
+#include "nanovg/src/nanovg.h"
+#include "nanovg/src/nanovg_gl.h"
+#include "nanovg/src/nanovg_gl_utils.h"
 #include "spu/interface.h"
+#include "support/bezier.h"
 #include "support/uvfile.h"
 #include "support/zfile.h"
 #include "tracy/Tracy.hpp"
@@ -374,7 +382,7 @@ void PCSX::GUI::init() {
     }
 
     if (!m_window) {
-        throw std::runtime_error("Unable to create main Window. Check OpenGL drivers.");
+        throw std::runtime_error("Unable to create main window. Check OpenGL drivers.");
     }
     glfwMakeContextCurrent(m_window);
     glfwSwapInterval(0);
@@ -398,6 +406,11 @@ void PCSX::GUI::init() {
     result = gl3wInit();
     if (result) {
         throw std::runtime_error("Unable to initialize OpenGL layer. Check OpenGL drivers.");
+    }
+
+    m_nvgContext = nvgCreateGLES3(NVG_ANTIALIAS | NVG_STENCIL_STROKES | NVG_DEBUG);
+    if (!m_nvgContext) {
+        throw std::runtime_error("Unable to initialize NanoVG. Check OpenGL drivers.");
     }
 
     // Setup ImGui binding
@@ -432,10 +445,10 @@ void PCSX::GUI::init() {
 
             auto& windowSizeX = settings.get<WindowSizeX>();
             auto& windowSizeY = settings.get<WindowSizeY>();
-            if (!windowSizeX || resetUI) {
+            if (windowSizeX <= 0 || resetUI) {
                 windowSizeX.reset();
             }
-            if (!windowSizeY || resetUI) {
+            if (windowSizeY <= 0 || resetUI) {
                 windowSizeY.reset();
             }
             if (resetUI) {
@@ -443,7 +456,10 @@ void PCSX::GUI::init() {
                 settings.get<WindowPosY>().reset();
             }
 
-            glfwSetWindowPos(m_window, settings.get<WindowPosX>(), settings.get<WindowPosY>());
+            if ((settings.get<WindowPosX>().value > 0) && (settings.get<WindowPosY>().value > 0)) {
+                glfwSetWindowPos(m_window, settings.get<WindowPosX>(), settings.get<WindowPosY>());
+            }
+
             glfwSetWindowSize(m_window, windowSizeX, windowSizeY);
             PCSX::g_emulator->m_spu->setCfg(j);
             PCSX::g_emulator->m_pads->setCfg(j);
@@ -451,6 +467,8 @@ void PCSX::GUI::init() {
             PCSX::g_emulator->m_pads->setDefaults();
             saveCfg();
         }
+
+        g_system->activateLocale(emuSettings.get<Emulator::SettingLocale>());
 
         g_system->m_eventBus->signal(Events::SettingsLoaded{safeMode});
         if (emuSettings.get<PCSX::Emulator::SettingAutoUpdate>() && !g_system->getVersion().failed()) {
@@ -631,9 +649,16 @@ void PCSX::GUI::close() {
 void PCSX::GUI::saveCfg() {
     std::ofstream cfg("pcsx.json");
     json j;
-
-    glfwGetWindowPos(m_window, &m_glfwPosX, &m_glfwPosY);
-    glfwGetWindowSize(m_window, &m_glfwSizeX, &m_glfwSizeY);
+   
+    if (m_fullscreen || glfwGetWindowAttrib(m_window, GLFW_ICONIFIED) > 0) {
+        m_glfwPosX = settings.get<WindowPosX>();
+        m_glfwPosY = settings.get<WindowPosY>();
+        m_glfwSizeX = settings.get<WindowSizeX>();
+        m_glfwSizeY = settings.get<WindowSizeY>();
+    } else {  
+        glfwGetWindowPos(m_window, &m_glfwPosX, &m_glfwPosY);
+        glfwGetWindowSize(m_window, &m_glfwSizeX, &m_glfwSizeY);
+    }
 
     j["imgui"] = ImGui::SaveIniSettingsToMemory(nullptr);
     j["SPU"] = PCSX::g_emulator->m_spu->getCfg();
@@ -676,7 +701,7 @@ void PCSX::GUI::startFrame() {
         w = std::max<int>(w, 1);
         h = std::max<int>(h, 1);
         m_framebufferSize = ImVec2(w, h);
-        m_renderSize = ImVec2(w, h);
+        m_renderSize = m_fullWindowRender ? ImVec2(w, h) : m_outputWindowSize;
         normalizeDimensions(m_renderSize, renderRatio);
 
         // Reset texture and framebuffer storage
@@ -743,41 +768,41 @@ void PCSX::GUI::startFrame() {
     if (g_emulator->settings.get<Emulator::SettingKioskMode>().value) return;
 
     // Check hotkeys (TODO: Make configurable)
-    if (ImGui::IsKeyPressed(GLFW_KEY_ESCAPE)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         m_showMenu = !m_showMenu;
     }
     if (io.KeyAlt) {
-        if (ImGui::IsKeyPressed(GLFW_KEY_ENTER)) setFullscreen(!m_fullscreen);
+        if (ImGui::IsKeyPressed(ImGuiKey_Enter)) setFullscreen(!m_fullscreen);
         if (io.KeyCtrl) {
             setRawMouseMotion(!isRawMouseMotionEnabled());
         }
     }
 
-    if (ImGui::IsKeyPressed(GLFW_KEY_F1)) {  // Save to quick-save slot
+    if (ImGui::IsKeyPressed(ImGuiKey_F1)) {  // Save to quick-save slot
         saveSaveState(buildSaveStateFilename(0));
     }
 
-    if (ImGui::IsKeyPressed(GLFW_KEY_F2)) {  // Load from quick-save slot
+    if (ImGui::IsKeyPressed(ImGuiKey_F2)) {  // Load from quick-save slot
         const auto saveStateName = buildSaveStateFilename(0);
         loadSaveState(saveStateName);
     }
 
     if (!g_system->running()) {
-        if (ImGui::IsKeyPressed(GLFW_KEY_F10)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
             g_emulator->m_debug->stepOver();
-        } else if (ImGui::IsKeyPressed(GLFW_KEY_F11)) {
+        } else if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
             if (ImGui::GetIO().KeyShift) {
                 g_emulator->m_debug->stepOut();
             } else {
                 g_emulator->m_debug->stepIn();
             }
-        } else if (ImGui::IsKeyPressed(GLFW_KEY_F5)) {
+        } else if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
             g_system->resume();
         }
     } else {
-        if (ImGui::IsKeyPressed(GLFW_KEY_PAUSE) || ImGui::IsKeyPressed(GLFW_KEY_F6)) g_system->pause();
+        if (ImGui::IsKeyPressed(ImGuiKey_Pause) || ImGui::IsKeyPressed(ImGuiKey_F6)) g_system->pause();
     }
-    if (ImGui::IsKeyPressed(GLFW_KEY_F8)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_F8)) {
         if (ImGui::GetIO().KeyShift) {
             g_system->hardReset();
         } else {
@@ -827,7 +852,7 @@ void PCSX::GUI::endFrame() {
     m_offscreenShaderEditor.configure(this);
     m_outputShaderEditor.configure(this);
 
-    if (m_fullscreenRender) {
+    if (m_fullWindowRender) {
         ImTextureID texture = reinterpret_cast<ImTextureID*>(m_offscreenTextures[m_currentTexture]);
         const auto basePos = ImGui::GetMainViewport()->Pos;
         const auto displayFramebufferScale = ImGui::GetIO().DisplayFramebufferScale;
@@ -838,7 +863,7 @@ void PCSX::GUI::endFrame() {
         ImGui::SetNextWindowSize(logicalRenderSize);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-        ImGui::Begin("FullScreenRender", nullptr,
+        ImGui::Begin("FullWindowRender", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
                          ImGuiWindowFlags_NoBringToFrontOnFocus);
@@ -853,18 +878,22 @@ void PCSX::GUI::endFrame() {
                 _("Output"), &outputShown,
                 ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse)) {
             ImVec2 textureSize = ImGui::GetContentRegionAvail();
+            if ((m_outputWindowSize.x != textureSize.x) || (m_outputWindowSize.y != textureSize.y)) {
+                m_outputWindowSize = textureSize;
+                m_setupScreenSize = true;
+            }
             normalizeDimensions(textureSize, renderRatio);
             ImTextureID texture = reinterpret_cast<ImTextureID*>(m_offscreenTextures[m_currentTexture]);
             m_outputShaderEditor.renderWithImgui(this, texture, m_renderSize, textureSize);
         }
         ImGui::End();
-        if (!outputShown) m_fullscreenRender = true;
+        if (!outputShown) m_fullWindowRender = true;
     }
 
     bool showOpenIsoFileDialog = false;
     bool showOpenBinaryDialog = false;
 
-    if (m_showMenu || !m_fullscreenRender || !PCSX::g_system->running()) {
+    if (m_showMenu || !m_fullWindowRender || !PCSX::g_system->running()) {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu(_("File"))) {
                 showOpenIsoFileDialog = ImGui::MenuItem(_("Open Disk Image"));
@@ -939,10 +968,10 @@ void PCSX::GUI::endFrame() {
             }
             ImGui::Separator();
             if (ImGui::BeginMenu(_("Emulation"))) {
-                if (ImGui::MenuItem(_("Start"), "F5", nullptr, !g_system->running())) {
+                if (ImGui::MenuItem(_("Start emulation"), "F5", nullptr, !g_system->running())) {
                     g_system->resume();
                 }
-                if (ImGui::MenuItem(_("Pause"), "F6", nullptr, g_system->running())) {
+                if (ImGui::MenuItem(_("Pause emulation"), "F6", nullptr, g_system->running())) {
                     g_system->pause();
                 }
                 if (ImGui::MenuItem(_("Soft Reset"), "F8")) {
@@ -1098,7 +1127,9 @@ in Configuration->Emulation, restart PCSX-Redux, then try again.)"));
                     PCSX::g_emulator->m_gpu->stopDump();
                 }
                 ImGui::Separator();
-                ImGui::MenuItem(_("Fullscreen render"), nullptr, &m_fullscreenRender);
+                if (ImGui::MenuItem(_("Full window render"), nullptr, &m_fullWindowRender)) {
+                    m_setupScreenSize = true;
+                }
                 ImGui::MenuItem(_("Show Output Shader Editor"), nullptr, &m_outputShaderEditor.m_show);
                 ImGui::MenuItem(_("Show Offscreen Shader Editor"), nullptr, &m_offscreenShaderEditor.m_show);
                 ImGui::EndMenu();
@@ -1534,7 +1565,7 @@ the update and manually apply it.)")));
 
     ImGui::Render();
     glViewport(0, 0, w, h);
-    if (m_fullscreenRender) {
+    if (m_fullWindowRender) {
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     } else {
         glClearColor(m_backgroundColor.x, m_backgroundColor.y, m_backgroundColor.z, m_backgroundColor.w);
@@ -1622,20 +1653,24 @@ when changing this setting.)"));
         }
 
         {
-            static const char* types[] = {"Auto", "NTSC", "PAL"};
+            static const std::function<const char*()> types[] = {
+                []() { return _("Auto"); },
+                []() { return _("NTSC"); },
+                []() { return _("PAL"); },
+            };
             auto& autodetect = settings.get<Emulator::SettingAutoVideo>().value;
             auto& type = settings.get<Emulator::SettingVideo>().value;
-            if (ImGui::BeginCombo(_("System Type"), types[autodetect ? 0 : (type + 1)])) {
-                if (ImGui::Selectable(types[0], autodetect)) {
+            if (ImGui::BeginCombo(_("System Type"), types[autodetect ? 0 : (type + 1)]())) {
+                if (ImGui::Selectable(types[0](), autodetect)) {
                     changed = true;
                     autodetect = true;
                 }
-                if (ImGui::Selectable(types[1], !autodetect && (type == PCSX::Emulator::PSX_TYPE_NTSC))) {
+                if (ImGui::Selectable(types[1](), !autodetect && (type == PCSX::Emulator::PSX_TYPE_NTSC))) {
                     changed = true;
                     type = PCSX::Emulator::PSX_TYPE_NTSC;
                     autodetect = false;
                 }
-                if (ImGui::Selectable(types[2], !autodetect && (type == PCSX::Emulator::PSX_TYPE_PAL))) {
+                if (ImGui::Selectable(types[2](), !autodetect && (type == PCSX::Emulator::PSX_TYPE_PAL))) {
                     changed = true;
                     type = PCSX::Emulator::PSX_TYPE_PAL;
                     autodetect = false;
@@ -1663,7 +1698,7 @@ faster by not displaying the logo.)"));
 
         ShowHelpMarker(_(R"(This will enable the usage of various breakpoints
 throughout the execution of mips code. Enabling this
-can slow down emulation to a noticable extend.)"));
+can slow down emulation to a noticeable extent.)"));
         if (ImGui::Checkbox(_("Enable GDB Server"), &debugSettings.get<Emulator::DebugSettings::GdbServer>().value)) {
             changed = true;
             if (debugSettings.get<Emulator::DebugSettings::GdbServer>()) {
@@ -1848,15 +1883,18 @@ void PCSX::GUI::interruptsScaler() {
 }
 
 bool PCSX::GUI::showThemes() {
-    static const char* imgui_themes[] = {"Default", "Classic", "Light", "Cherry",
-                                         "Mono",    "Dracula", "Olive"};  // Used for theme combo box
+    static const std::function<const char*()> imgui_themes[] = {
+        []() { return _("Default theme"); }, []() { return _("Classic"); }, []() { return _("Light"); },
+        []() { return _("Cherry"); },        []() { return _("Mono"); },    []() { return _("Dracula"); },
+        []() { return _("Olive"); },
+    };
     auto changed = false;
     auto& currentTheme = g_emulator->settings.get<Emulator::SettingGUITheme>().value;
 
-    if (ImGui::BeginCombo(_("Themes"), imgui_themes[currentTheme], ImGuiComboFlags_HeightLarge)) {
+    if (ImGui::BeginCombo(_("Themes"), imgui_themes[currentTheme](), ImGuiComboFlags_HeightLarge)) {
         for (int n = 0; n < IM_ARRAYSIZE(imgui_themes); n++) {
             bool selected = (currentTheme == n);
-            if (ImGui::Selectable(imgui_themes[n], selected)) {
+            if (ImGui::Selectable(imgui_themes[n](), selected)) {
                 currentTheme = n;
                 changed = true;
                 applyTheme(n);
@@ -1940,22 +1978,22 @@ bool PCSX::GUI::about() {
                             _("OpenGL error reporting has been disabled because your OpenGL driver is too old. Error "
                               "reporting requires at least OpenGL 4.3. Please update your graphics drivers, or "
                               "contact your GPU vendor for up to date OpenGL drivers. Disabled OpenGL error reporting "
-                              "won't have a negative impact on the performances of this software, but user code such "
+                              "won't have a negative impact on the performance of this software, but user code such "
                               "as the shader editor won't be able to properly report problems accurately."));
                     }
                 }
 
                 changed |= ImGui::Checkbox(_("Enable OpenGL error reporting"),
                                            &g_emulator->settings.get<Emulator::SettingGLErrorReporting>().value);
-                changed |= ImGui::SliderInt(
-                    _("OpenGL error reporting severity"),
-                    &g_emulator->settings.get<Emulator::SettingGLErrorReportingSeverity>().value, 0, 3);
-
                 ShowHelpMarker(
                     _("OpenGL error reporting is necessary for properly reporting OpenGL problems. "
                       "However it requires OpenGL 4.3+ and might have performance repercussions on "
                       "some computers. (Requires a restart of the emulator)"));
-                ImGui::Text(_("Core profile: %s"), m_hasCoreProfile ? "yes" : "no");
+                changed |= ImGui::SliderInt(
+                    _("OpenGL error reporting severity"),
+                    &g_emulator->settings.get<Emulator::SettingGLErrorReportingSeverity>().value, 0, 3);
+
+                ImGui::Text(_("Core profile: %s"), m_hasCoreProfile ? _("yes") : _("no"));
                 someString(_("Vendor"), GL_VENDOR);
                 someString(_("Renderer"), GL_RENDERER);
                 someString(_("Version"), GL_VERSION);
@@ -2001,7 +2039,17 @@ void PCSX::GUI::shellReached() {
     std::filesystem::path p = filename;
 
     g_system->log(LogClass::UI, "Hijacked shell, loading %s...\n", p.string());
-    bool success = BinaryLoader::load(filename);
+    bool success = false;
+    auto backupPC = regs.pc;
+    try {
+        success = BinaryLoader::load(filename);
+    } catch (std::exception& e) {
+        g_system->log(LogClass::UI, "Failed to load %s: %s\n", p.string(), e.what());
+        regs.pc = backupPC;
+    } catch (...) {
+        g_system->log(LogClass::UI, "Failed to load %s: unknown error\n", p.string());
+        regs.pc = backupPC;
+    }
     if (success) {
         g_system->log(LogClass::UI, "Successful: new PC = %08x...\n", regs.pc);
     }
@@ -2104,4 +2152,77 @@ void PCSX::GUI::byteRateToString(float rate, std::string& str) {
     } else {
         str = fmt::format("{:.2f} B/s", rate);
     }
+}
+
+void PCSX::GUI::drawBezierArrow(float width, ImVec2 start, ImVec2 c1, ImVec2 c2, ImVec2 end, ImVec4 innerColor,
+                                ImVec4 outerColor) {
+    const float innerWidth = width;
+    const float outerWidth = width * 2.0f;
+    auto vg = m_nvgContext;
+    float bump;
+    float angle = Bezier::angle(start, c1, c2, end, 1.0f);
+    auto vgInnerColor = nvgRGBA(innerColor.x * 255, innerColor.y * 255, innerColor.z * 255, innerColor.w * 255);
+    auto vgOuterColor = nvgRGBA(outerColor.x * 255, outerColor.y * 255, outerColor.z * 255, outerColor.w * 255);
+
+    nvgSave(vg);
+    nvgLineCap(vg, NVG_BUTT);
+
+    // Set the outer arrow drawing settings.
+    nvgFillColor(vg, vgOuterColor);
+    nvgStrokeColor(vg, vgOuterColor);
+    nvgStrokeWidth(vg, outerWidth);
+
+    // Draw the butt of the arrow - the linecap setting works for both ends, and we only want it round at the start.
+    nvgBeginPath(vg);
+    nvgArc(vg, start.x, start.y, outerWidth / 2.0f, 0.0f, 2.0f * std::numbers::pi_v<float>, NVG_CW);
+    nvgFill(vg);
+
+    // Draw the shaft of the arrow itself.
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, start.x, start.y);
+    nvgBezierTo(vg, c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+    nvgStroke(vg);
+
+    // Draw the arrowhead.
+    bump = outerWidth / 1.5f;
+    nvgTranslate(vg, end.x, end.y);
+    nvgRotate(vg, angle);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, 0.0f, 0.0f);
+    nvgLineTo(vg, -bump * 2.0f, bump);
+    nvgLineTo(vg, -bump * 1.6f, 0.0f);
+    nvgLineTo(vg, -bump * 2.0f, -bump);
+    nvgClosePath(vg);
+    nvgStroke(vg);
+
+    // Set the inner arrow drawing settings, and draw everything again, with some slightly different offsets.
+    nvgResetTransform(vg);
+    nvgFillColor(vg, vgInnerColor);
+    nvgStrokeColor(vg, vgInnerColor);
+    nvgStrokeWidth(vg, innerWidth);
+
+    // Draw the butt of the arrow - the linecap setting works for both ends, and we only want it round at the start.
+    nvgBeginPath(vg);
+    nvgArc(vg, start.x, start.y, innerWidth / 2.0f, 0.0f, 2.0f * std::numbers::pi_v<float>, NVG_CW);
+    nvgFill(vg);
+
+    // Draw the shaft of the arrow itself.
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, start.x, start.y);
+    nvgBezierTo(vg, c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+    nvgStroke(vg);
+
+    // Draw the arrowhead.
+    bump = innerWidth / 1.5f;
+    nvgTranslate(vg, end.x, end.y);
+    nvgRotate(vg, angle);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, 0.0f, 0.0f);
+    nvgLineTo(vg, -bump * 3.55f, bump * 1.65f);
+    nvgLineTo(vg, -bump * 2.85f, 0.0f);
+    nvgLineTo(vg, -bump * 3.55f, -bump * 1.65f);
+    nvgClosePath(vg);
+    nvgStroke(vg);
+
+    nvgRestore(vg);
 }
