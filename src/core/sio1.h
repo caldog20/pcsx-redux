@@ -43,8 +43,6 @@ struct SIO1Registers {
     uint16_t baud;
 };
 
-// typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("dxr"), 1> FlowControlDXR;
-// typedef Protobuf::Field<Protobuf::Bool, TYPESTRING("xts"), 2> FlowControlXTS;
 typedef Protobuf::Field<Protobuf::UInt16, TYPESTRING("flow_control_reg"), 1> FlowControlReg;
 typedef Protobuf::Message<TYPESTRING("FlowControl"), FlowControlReg> FlowControl;
 typedef Protobuf::MessageField<FlowControl, TYPESTRING("flow_control"), 2> FlowControlField;
@@ -91,14 +89,14 @@ class SIO1 {
         m_regs.baud = 0;
         m_decodeState = READ_SIZE;
         messageSize = 0;
-        slaveDelay = true;
+        m_slaveDelay = true;
         g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 
     void stopSIO1Connection() {
         m_decodeState = READ_SIZE;
         messageSize = 0;
-        slaveDelay = true;
+        m_slaveDelay = true;
         if (m_sio1fifo.isA<Fifo>()) {
             m_sio1fifo.asA<Fifo>()->reset();
         } else if (m_sio1fifo) {
@@ -160,7 +158,7 @@ class SIO1 {
 
   private:
     uint8_t messageSize = 0;
-    bool slaveDelay = true;
+    bool m_slaveDelay = true;
     uint64_t m_cycleCount = 2352;  // Default to cycles for 115200 baud
     uint64_t m_baudRate = 115200;  // Default to 115200 baud
 
@@ -176,6 +174,27 @@ class SIO1 {
     void updateStat();
     void transmitData();
     bool isTransmitReady();
+
+    inline void slaveDelay() {
+        uint16_t ctrl = CR_DTR | CR_RTS;
+        SIOPayload payload = {
+            DataTransfer{},
+            FlowControl{ctrl},
+        };
+        for (int i = 0; i < 4; ++i) {
+            std::string message = encodeMessage(payload);
+            transmitMessage(std::move(message));
+        }
+        m_slaveDelay = false;
+    }
+
+    inline void waitOnMessage() {
+        while (m_fifo->size() == 0)
+            ;                          // Wait for the next message to force sync
+        messageSize = m_fifo->byte();  // Retrieve size of message
+        while (m_fifo->size() < messageSize)
+            ;  // Wait until full message has been received
+    }
 
     inline void setDsr(bool value) {
         if (value) {

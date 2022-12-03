@@ -85,7 +85,7 @@ void PCSX::SIO1::decodeMessage() {
 }
 
 void PCSX::SIO1::processMessage(SIOPayload payload) {
-    // Flow control is always sent/received
+    // Flow control is always sent/received to ensure synchronization
     setDsr(payload.get<FlowControlField>().get<FlowControlReg>().value & CR_DTR);
     setCts(payload.get<FlowControlField>().get<FlowControlReg>().value & CR_RTS);
     if (payload.get<DataTransferField>().get<DataTransferData>().hasData()) {
@@ -116,40 +116,26 @@ void PCSX::SIO1::processMessage(SIOPayload payload) {
 void PCSX::SIO1::sio1StateMachine(bool data) {
     if (fifoError()) return;
 
-    // Server is master
+    // Server is master - send first, receive after
     if (g_emulator->m_sio1Server->getServerStatus() == SIO1Server::SIO1ServerStatus::SERVER_STARTED) {
         if (data) {
             sendDataMessage();
         } else {
             sendFlowControlMessage();
         }
-        while (m_fifo->size() == 0) {
-        }  // Wait for the next message to force sync
-        messageSize = m_fifo->byte();
-        while (m_fifo->size() < messageSize) {
-        }  // Wait until full message has been received
 
-        // Client is slave
-    } else if (g_emulator->m_sio1Client->getClientStatus() == SIO1Client::SIO1ClientStatus::CLIENT_STARTED) {
-        if (slaveDelay) {
-            uint16_t ctrl = CR_DTR | CR_RTS;
-            SIOPayload payload = {
-                DataTransfer{},
-                FlowControl{ctrl},
-            };
-            for (int i = 0; i < 4; ++i) {
-                std::string message = encodeMessage(payload);
-                transmitMessage(std::move(message));
-            }
-            slaveDelay = false;
+        waitOnMessage();  // Wait for the next message to be fully received
+    }
+
+    // Client is slave - receive first, send after
+    if (g_emulator->m_sio1Client->getClientStatus() == SIO1Client::SIO1ClientStatus::CLIENT_STARTED) {
+        // If connection is new, run slave delay
+        if (m_slaveDelay) {
+            slaveDelay();
             return;
         }
 
-        while (m_fifo->size() == 0) {
-        }  // Wait for the next message to force sync
-        messageSize = m_fifo->byte();
-        while (m_fifo->size() < messageSize) {
-        }  // Wait until full message has been received
+        waitOnMessage();  // Wait for the next message to be fully received
 
         if (data) {
             sendDataMessage();
@@ -298,6 +284,7 @@ void PCSX::SIO1::writeCtrl16(uint16_t v) {
         PCSX::g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 
+    // Behavior to clear FIFO if RXEN is disabled
     if (!(m_regs.control & CR_RXEN)) {
         if (m_sio1fifo.isA<Fifo>()) {
             m_sio1fifo.asA<Fifo>()->reset();
